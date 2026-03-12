@@ -8,19 +8,20 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Load current user from localStorage cache
         const currentUser = authStore.getCurrentUser();
         setUser(currentUser);
         setLoading(false);
     }, []);
 
-    const login = (emailOrUsername, password) => {
-        const result = authStore.login(emailOrUsername, password);
+    const login = async (emailOrUsername, password) => {
+        const result = await authStore.login(emailOrUsername, password);
         if (result.user) setUser(result.user);
         return result;
     };
 
-    const signup = (username, email, password, name) => {
-        const result = authStore.signup(username, email, password, name);
+    const signup = async (username, email, password, name) => {
+        const result = await authStore.signup(username, email, password, name);
         if (result.user) setUser(result.user);
         return result;
     };
@@ -30,9 +31,9 @@ export function AuthProvider({ children }) {
         setUser(null);
     };
 
-    const updateProfile = (updates) => {
+    const updateProfile = async (updates) => {
         if (!user) return;
-        const result = authStore.updateProfile(user.id, updates);
+        const result = await authStore.updateProfile(user.id, updates);
         if (result.user) setUser(result.user);
         return result;
     };

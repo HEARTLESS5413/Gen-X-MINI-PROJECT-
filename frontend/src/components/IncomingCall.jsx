@@ -15,9 +15,9 @@ export default function IncomingCall() {
     useEffect(() => {
         if (!currentUser) return;
 
-        const cleanup = onCallEvent((event) => {
+        const cleanup = onCallEvent(async (event) => {
             if (event.action === 'incoming' && event.call && event.call.to === currentUser.id) {
-                const caller = usersStore.getById(event.call.from);
+                const caller = await usersStore.getById(event.call.from);
                 setCallerUser(caller);
                 setIncomingCall(event.call);
             } else if (event.action === 'ended' || event.action === 'declined') {
@@ -30,11 +30,11 @@ export default function IncomingCall() {
         const pollInterval = setInterval(() => {
             const call = getActiveCall();
             if (call && call.to === currentUser.id && call.status === 'ringing' && !incomingCall) {
-                const caller = usersStore.getById(call.from);
-                setCallerUser(caller);
-                setIncomingCall(call);
+                usersStore.getById(call.from).then(caller => {
+                    setCallerUser(caller);
+                    setIncomingCall(call);
+                });
             }
-            // Clean up if call was ended/declined
             if (incomingCall && (!call || call.status === 'ended' || call.status === 'declined')) {
                 if (!showCallUI) {
                     setIncomingCall(null);

@@ -8,7 +8,8 @@ export default function CreateModal({ onClose }) {
     const [file, setFile] = useState(null);
     const [preview, setPreview] = useState(null);
     const [caption, setCaption] = useState('');
-    const [tab, setTab] = useState('post'); // post, story, reel
+    const [tab, setTab] = useState('post');
+    const [sharing, setSharing] = useState(false);
 
     const handleFile = (e) => {
         if (e.target.files?.[0]) {
@@ -18,9 +19,11 @@ export default function CreateModal({ onClose }) {
         }
     };
 
-    const handleShare = () => {
+    const handleShare = async () => {
         if (!user || !preview) return;
-        postsStore.create(user.id, preview, caption);
+        setSharing(true);
+        await postsStore.create(user.id, preview, caption);
+        setSharing(false);
         onClose();
         window.location.reload();
     };
@@ -32,13 +35,11 @@ export default function CreateModal({ onClose }) {
                     <button className="btn-ghost" onClick={onClose}><X size={20} /></button>
                     <span>Create new {tab}</span>
                     {preview && (
-                        <button onClick={handleShare} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontWeight: '700', cursor: 'pointer' }}>
-                            Share
+                        <button onClick={handleShare} disabled={sharing} style={{ background: 'none', border: 'none', color: 'var(--accent)', fontWeight: '700', cursor: 'pointer' }}>
+                            {sharing ? 'Sharing...' : 'Share'}
                         </button>
                     )}
                 </div>
-
-                {/* Tab Selector */}
                 <div style={{ display: 'flex', borderBottom: '1px solid var(--border)' }}>
                     {['post', 'story', 'reel'].map(t => (
                         <button key={t} onClick={() => setTab(t)} style={{
@@ -48,7 +49,6 @@ export default function CreateModal({ onClose }) {
                         }}>{t}</button>
                     ))}
                 </div>
-
                 <div className="create-modal-body">
                     {!preview ? (
                         <label className="create-dropzone">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PostCard from '../components/PostCard';
 import CommentModal from '../components/CommentModal';
 import StoryViewer from '../components/StoryViewer';
@@ -9,25 +9,42 @@ import { useNavigate } from 'react-router-dom';
 export default function Home() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const allPosts = postsStore.getAll();
-    const allStories = storiesStore.getAll();
+    const [allPosts, setAllPosts] = useState([]);
+    const [storyUsers, setStoryUsers] = useState([]);
+    const [allStories, setAllStories] = useState([]);
     const [commentPost, setCommentPost] = useState(null);
     const [viewingStory, setViewingStory] = useState(null);
+    const [loading, setLoading] = useState(true);
 
-    const storyUsers = [...new Set(allStories.map(s => s.userId))].map(id => usersStore.getById(id)).filter(Boolean);
+    useEffect(() => {
+        async function loadFeed() {
+            const [postsData, storiesData] = await Promise.all([
+                postsStore.getAll(),
+                storiesStore.getAll()
+            ]);
+            setAllPosts(postsData);
+            setAllStories(storiesData);
+
+            // Load story users
+            const uniqueUserIds = [...new Set(storiesData.map(s => s.user_id))];
+            const storyUserData = await Promise.all(uniqueUserIds.map(id => usersStore.getById(id)));
+            setStoryUsers(storyUserData.filter(Boolean));
+            setLoading(false);
+        }
+        loadFeed();
+    }, []);
 
     const handleStoryClick = (userId) => {
         const storyIndex = storyUsers.findIndex(u => u.id === userId);
-        if (storyIndex >= 0) {
-            setViewingStory(storyIndex);
-        }
+        if (storyIndex >= 0) setViewingStory(storyIndex);
     };
+
+    if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-tertiary)' }}>Loading feed...</div>;
 
     return (
         <div className="feed-container">
             {/* Stories */}
             <div className="stories-bar">
-                {/* Your story */}
                 {user && (
                     <div className="story-item" onClick={() => { }}>
                         <div style={{ position: 'relative' }}>
@@ -65,16 +82,9 @@ export default function Home() {
                 </div>
             )}
 
-            {/* Comment Modal */}
             {commentPost && <CommentModal post={commentPost} onClose={() => setCommentPost(null)} />}
-
-            {/* Story Viewer */}
             {viewingStory !== null && (
-                <StoryViewer
-                    stories={allStories}
-                    startIndex={viewingStory}
-                    onClose={() => setViewingStory(null)}
-                />
+                <StoryViewer stories={allStories} startIndex={viewingStory} onClose={() => setViewingStory(null)} />
             )}
         </div>
     );

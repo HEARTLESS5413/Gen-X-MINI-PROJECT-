@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Search, PlusSquare, Heart, User, MessageCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -9,7 +9,16 @@ export default function MobileNav({ onCreateClick, onSearchClick }) {
     const location = useLocation();
     const { user } = useAuth();
     const path = location.pathname;
-    const unreadMsgs = user ? msgStore.getUnreadCount(user.id) : 0;
+    const [unreadMsgs, setUnreadMsgs] = useState(0);
+
+    useEffect(() => {
+        if (!user) return;
+        msgStore.getUnreadCount(user.id).then(count => setUnreadMsgs(count));
+        const interval = setInterval(() => {
+            msgStore.getUnreadCount(user.id).then(count => setUnreadMsgs(count));
+        }, 30000);
+        return () => clearInterval(interval);
+    }, [user, path]);
 
     const items = [
         { icon: Home, path: '/', onClick: () => navigate('/') },

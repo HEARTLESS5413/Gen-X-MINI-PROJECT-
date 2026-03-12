@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Search, Compass, MessageCircle, Heart, PlusSquare, User, Menu, Settings, Bookmark, Sun, Moon, LogOut, Film, Gamepad2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -12,10 +12,25 @@ export default function Sidebar({ onCreateClick, onSearchClick }) {
     const { themeMode, toggleTheme } = useTheme();
     const [showMore, setShowMore] = useState(false);
     const [expanded, setExpanded] = useState(false);
-
-    const unreadNotifs = user ? notifStore.getUnreadCount(user.id) : 0;
-    const unreadMsgs = user ? msgStore.getUnreadCount(user.id) : 0;
+    const [unreadNotifs, setUnreadNotifs] = useState(0);
+    const [unreadMsgs, setUnreadMsgs] = useState(0);
     const currentPath = location.pathname;
+
+    useEffect(() => {
+        if (!user) return;
+        async function loadCounts() {
+            const [notifCount, msgCount] = await Promise.all([
+                notifStore.getUnreadCount(user.id),
+                msgStore.getUnreadCount(user.id),
+            ]);
+            setUnreadNotifs(notifCount);
+            setUnreadMsgs(msgCount);
+        }
+        loadCounts();
+        // Refresh every 30 seconds
+        const interval = setInterval(loadCounts, 30000);
+        return () => clearInterval(interval);
+    }, [user, currentPath]);
 
     const handleNav = useCallback((action) => {
         action();
@@ -42,18 +57,8 @@ export default function Sidebar({ onCreateClick, onSearchClick }) {
                 onMouseLeave={() => setExpanded(false)}
             >
                 <div className="sidebar-logo" onClick={() => handleNav(() => navigate('/'))}>
-                    <svg
-                        className="sidebar-label sidebar-logo-svg"
-                        viewBox="0 0 160 50"
-                        xmlns="http://www.w3.org/2000/svg"
-                    >
-                        <text
-                            className="logo-letter logo-text-path"
-                            x="0"
-                            y="40"
-                        >
-                            Gen-X
-                        </text>
+                    <svg className="sidebar-label sidebar-logo-svg" viewBox="0 0 160 50" xmlns="http://www.w3.org/2000/svg">
+                        <text className="logo-letter logo-text-path" x="0" y="40">Gen-X</text>
                     </svg>
                 </div>
                 <nav className="sidebar-nav">

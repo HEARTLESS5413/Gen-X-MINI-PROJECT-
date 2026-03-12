@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Gamepad2, Crown, Sword, Bird, Hand, Type, ArrowLeft, Users, Link2, Share2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -62,11 +62,17 @@ export default function Games() {
     const { user: currentUser } = useAuth();
     const [selectedGame, setSelectedGame] = useState(null);
     const [playerMode, setPlayerMode] = useState(null);
-    const [showInvite, setShowInvite] = useState(false);
+    const [friends, setFriends] = useState([]);
 
-    const friends = currentUser
-        ? followsStore.getFollowing(currentUser.id).map(f => usersStore.getById(f.targetId)).filter(Boolean)
-        : [];
+    useEffect(() => {
+        if (!currentUser) return;
+        async function loadFriends() {
+            const following = await followsStore.getFollowing(currentUser.id);
+            const users = await Promise.all(following.map(f => usersStore.getById(f.target_id)));
+            setFriends(users.filter(Boolean));
+        }
+        loadFriends();
+    }, [currentUser]);
 
     const handlePlay = (game) => {
         setSelectedGame(game);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Grid3X3, Bookmark, Film, Settings, MessageCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -9,12 +9,55 @@ export default function Profile() {
     const navigate = useNavigate();
     const { user: currentUser } = useAuth();
 
-    const profileUser = usersStore.getByUsername(username);
-    const isOwnProfile = currentUser?.id === profileUser?.id;
-    const [isFollowing, setIsFollowing] = useState(
-        currentUser && profileUser ? followsStore.isFollowing(currentUser.id, profileUser.id) : false
-    );
+    const [profileUser, setProfileUser] = useState(null);
+    const [userPosts, setUserPosts] = useState([]);
+    const [followers, setFollowers] = useState([]);
+    const [following, setFollowing] = useState([]);
+    const [savedPosts, setSavedPosts] = useState([]);
+    const [isFollowing, setIsFollowing] = useState(false);
     const [activeTab, setActiveTab] = useState('posts');
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        async function loadProfile() {
+            setLoading(true);
+            const user = await usersStore.getByUsername(username);
+            if (!user) { setProfileUser(null); setLoading(false); return; }
+            setProfileUser(user);
+
+            const [posts, frs, fing] = await Promise.all([
+                postsStore.getByUser(user.id),
+                followsStore.getFollowers(user.id),
+                followsStore.getFollowing(user.id),
+            ]);
+            setUserPosts(posts);
+            setFollowers(frs);
+            setFollowing(fing);
+
+            if (currentUser) {
+                const following = await followsStore.isFollowing(currentUser.id, user.id);
+                setIsFollowing(following);
+                if (currentUser.id === user.id) {
+                    const saved = await savedStore.getByUser(currentUser.id);
+                    setSavedPosts(saved);
+                }
+            }
+            setLoading(false);
+        }
+        loadProfile();
+    }, [username, currentUser]);
+
+    const handleFollow = async () => {
+        if (currentUser && profileUser) {
+            const result = await followsStore.toggle(currentUser.id, profileUser.id);
+            setIsFollowing(result);
+            // Refresh followers
+            const frs = await followsStore.getFollowers(profileUser.id);
+            setFollowers(frs);
+        }
+    };
+
+    if (loading) return <div style={{ textAlign: 'center', padding: '60px', color: 'var(--text-tertiary)' }}>Loading profile...</div>;
 
     if (!profileUser) {
         return (
@@ -24,25 +67,12 @@ export default function Profile() {
         );
     }
 
-    const userPosts = postsStore.getByUser(profileUser.id);
-    const followers = followsStore.getFollowers(profileUser.id);
-    const following = followsStore.getFollowing(profileUser.id);
-    const savedPosts = isOwnProfile ? savedStore.getByUser(currentUser.id) : [];
-
-    const handleFollow = () => {
-        if (currentUser) {
-            followsStore.toggle(currentUser.id, profileUser.id);
-            setIsFollowing(!isFollowing);
-        }
-    };
-
-    const canViewPosts = profileUser.isPublic || isOwnProfile || isFollowing;
-
+    const isOwnProfile = currentUser?.id === profileUser?.id;
+    const canViewPosts = profileUser.is_public || isOwnProfile || isFollowing;
     const displayPosts = activeTab === 'posts' ? userPosts : activeTab === 'saved' ? savedPosts : userPosts;
 
     return (
         <div className="profile-page">
-            {/* Header */}
             <div className="profile-header">
                 <div className="profile-avatar-section">
                     <div className="story-ring" style={{ width: '156px', height: '156px' }}>
@@ -68,13 +98,11 @@ export default function Profile() {
                             </>
                         )}
                     </div>
-
                     <div className="profile-stats">
                         <span><strong>{userPosts.length}</strong> posts</span>
                         <span><strong>{followers.length}</strong> followers</span>
                         <span><strong>{following.length}</strong> following</span>
                     </div>
-
                     <div className="profile-bio">
                         <span className="name">{profileUser.name}</span>
                         {profileUser.bio && profileUser.bio.split('\n').map((line, i) => <span key={i}>{line}<br /></span>)}
@@ -82,7 +110,6 @@ export default function Profile() {
                 </div>
             </div>
 
-            {/* Tabs */}
             <div className="profile-tabs">
                 <button className={`profile-tab ${activeTab === 'posts' ? 'active' : ''}`} onClick={() => setActiveTab('posts')}>
                     <Grid3X3 size={14} /> Posts
@@ -97,7 +124,6 @@ export default function Profile() {
                 </button>
             </div>
 
-            {/* Posts Grid */}
             {canViewPosts ? (
                 <div className="profile-grid">
                     {displayPosts.map(post => (

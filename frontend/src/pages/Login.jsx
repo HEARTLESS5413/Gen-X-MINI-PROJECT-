@@ -9,12 +9,15 @@ export default function Login() {
     const [error, setError] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
         if (!email || !password) { setError('Please fill in all fields'); return; }
-        const result = login(email, password);
+        setLoading(true);
+        const result = await login(email, password);
+        setLoading(false);
         if (result.error) setError(result.error);
         else navigate('/');
     };
@@ -41,7 +44,9 @@ export default function Login() {
                             onChange={(e) => setPassword(e.target.value)}
                         />
                         {error && <div className="auth-error">{error}</div>}
-                        <button className="btn btn-primary" type="submit">Log In</button>
+                        <button className="btn btn-primary" type="submit" disabled={loading}>
+                            {loading ? 'Logging in...' : 'Log In'}
+                        </button>
                     </form>
 
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-tertiary)', marginTop: '12px' }}>

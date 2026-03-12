@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -8,26 +8,43 @@ import sounds from '../lib/sounds';
 export default function PostCard({ post, onCommentClick }) {
     const { user: currentUser } = useAuth();
     const navigate = useNavigate();
-    const postUser = usersStore.getById(post.userId);
-    const [isLiked, setIsLiked] = useState(currentUser ? likesStore.isLiked(currentUser.id, post.id) : false);
-    const [isSaved, setIsSaved] = useState(currentUser ? savedStore.isSaved(currentUser.id, post.id) : false);
-    const [likeCount, setLikeCount] = useState(post.likes || 0);
+    const [postUser, setPostUser] = useState(null);
+    const [isLiked, setIsLiked] = useState(false);
+    const [isSaved, setIsSaved] = useState(false);
+    const [likeCount, setLikeCount] = useState(post.likes_count || post.likes || 0);
     const [comment, setComment] = useState('');
+    const [commentCount, setCommentCount] = useState(0);
     const [showHeart, setShowHeart] = useState(false);
 
-    const commentCount = commentsStore.getByPost(post.id).length;
+    useEffect(() => {
+        async function loadData() {
+            const u = await usersStore.getById(post.user_id || post.userId);
+            setPostUser(u);
+            if (currentUser) {
+                const [liked, saved, cmts] = await Promise.all([
+                    likesStore.isLiked(currentUser.id, post.id),
+                    savedStore.isSaved(currentUser.id, post.id),
+                    commentsStore.getByPost(post.id),
+                ]);
+                setIsLiked(liked);
+                setIsSaved(saved);
+                setCommentCount(cmts.length);
+            }
+        }
+        loadData();
+    }, [post.id, currentUser]);
 
-    const handleLike = () => {
+    const handleLike = async () => {
         if (!currentUser) return;
-        const liked = likesStore.toggle(currentUser.id, post.id);
+        const liked = await likesStore.toggle(currentUser.id, post.id);
         setIsLiked(liked);
         setLikeCount(prev => liked ? prev + 1 : prev - 1);
         if (liked) sounds.like();
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!currentUser) return;
-        const saved = savedStore.toggle(currentUser.id, post.id);
+        const saved = await savedStore.toggle(currentUser.id, post.id);
         setIsSaved(saved);
     };
 
@@ -37,17 +54,20 @@ export default function PostCard({ post, onCommentClick }) {
         setTimeout(() => setShowHeart(false), 800);
     };
 
-    const handleComment = (e) => {
+    const handleComment = async (e) => {
         e.preventDefault();
         if (!comment.trim() || !currentUser) return;
-        commentsStore.add(currentUser.id, post.id, comment);
+        await commentsStore.add(currentUser.id, post.id, comment);
         setComment('');
+        setCommentCount(prev => prev + 1);
         sounds.notification();
     };
 
     const formatTime = (time) => {
-        if (typeof time === 'string') return time;
-        const diff = Date.now() - time;
+        if (!time) return '';
+        if (typeof time === 'string' && !time.includes('T')) return time;
+        const date = new Date(time);
+        const diff = Date.now() - date.getTime();
         const mins = Math.floor(diff / 60000);
         if (mins < 60) return `${mins}m`;
         const hrs = Math.floor(mins / 60);
@@ -65,7 +85,7 @@ export default function PostCard({ post, onCommentClick }) {
                         <img className="avatar" style={{ width: '30px', height: '30px' }} src={postUser.avatar} alt={postUser.username} />
                     </div>
                     <span className="post-username">{postUser.username}</span>
-                    <span className="post-time">• {formatTime(post.time || post.createdAt)}</span>
+                    <span className="post-time">• {formatTime(post.created_at || post.createdAt)}</span>
                 </div>
                 <button className="btn-ghost"><MoreHorizontal size={20} /></button>
             </div>
@@ -107,7 +127,6 @@ export default function PostCard({ post, onCommentClick }) {
                     View all {commentCount} comments
                 </div>
             )}
-
             <form className="post-add-comment" onSubmit={handleComment}>
                 <input placeholder="Add a comment..." value={comment} onChange={(e) => setComment(e.target.value)} />
                 {comment && <button type="submit">Post</button>}

@@ -6,9 +6,15 @@ export default function StoryViewer({ stories, startIndex = 0, onClose }) {
     const [currentIndex, setCurrentIndex] = useState(startIndex);
     const [progress, setProgress] = useState(0);
     const [paused, setPaused] = useState(false);
+    const [storyUser, setStoryUser] = useState(null);
 
     const currentStory = stories[currentIndex];
-    const storyUser = currentStory ? usersStore.getById(currentStory.userId) : null;
+
+    useEffect(() => {
+        if (currentStory) {
+            usersStore.getById(currentStory.user_id || currentStory.userId).then(u => setStoryUser(u));
+        }
+    }, [currentIndex]);
 
     // Random gradient backgrounds for stories
     const gradients = [

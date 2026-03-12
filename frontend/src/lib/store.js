@@ -1,475 +1,353 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
-    : null;
-
-// ===== LOCAL STORAGE HELPERS (works without Supabase) =====
-
-const STORAGE_KEYS = {
-    USERS: 'genx_users',
-    CURRENT_USER: 'genx_current_user',
-    POSTS: 'genx_posts',
-    STORIES: 'genx_stories',
-    MESSAGES: 'genx_messages',
-    NOTIFICATIONS: 'genx_notifications',
-    FOLLOWS: 'genx_follows',
-    COMMENTS: 'genx_comments',
-    LIKES: 'genx_likes',
-    SAVED: 'genx_saved',
-    THEME: 'genx_theme',
-};
-
-function getStore(key) {
-    try {
-        return JSON.parse(localStorage.getItem(key)) || [];
-    } catch { return []; }
-}
-
-function setStore(key, data) {
-    localStorage.setItem(key, JSON.stringify(data));
-}
-
-function getStoreObj(key) {
-    try {
-        return JSON.parse(localStorage.getItem(key)) || null;
-    } catch { return null; }
-}
-
-// ===== MIGRATE OLD DATA (rimi_* → genx_*) =====
-function migrateOldData() {
-    const OLD_KEYS = {
-        'rimi_users': 'genx_users',
-        'rimi_current_user': 'genx_current_user',
-        'rimi_posts': 'genx_posts',
-        'rimi_stories': 'genx_stories',
-        'rimi_messages': 'genx_messages',
-        'rimi_notifications': 'genx_notifications',
-        'rimi_follows': 'genx_follows',
-        'rimi_comments': 'genx_comments',
-        'rimi_likes': 'genx_likes',
-        'rimi_saved': 'genx_saved',
-        'rimi_theme': 'genx_theme',
-    };
-    Object.entries(OLD_KEYS).forEach(([oldKey, newKey]) => {
-        const oldData = localStorage.getItem(oldKey);
-        if (oldData && !localStorage.getItem(newKey)) {
-            localStorage.setItem(newKey, oldData);
-        }
-        // Clean up old keys after migration
-        if (oldData) localStorage.removeItem(oldKey);
-    });
-}
-
-migrateOldData();
-
-// ===== SEED DATA =====
-function seedData() {
-    if (getStore(STORAGE_KEYS.USERS).length > 0) return;
-
-    const users = [
-        { id: 'u1', username: 'genx_star', name: 'GenX Star', email: 'genx@demo.com', password: 'demo123', bio: 'Living my best life ✨\nContent creator | Dreamer', avatar: 'https://i.pravatar.cc/150?img=1', isPublic: true },
-        { id: 'u2', username: 'cyber_punk', name: 'Cyber Punk', email: 'cyber@demo.com', password: 'demo123', bio: 'Tech enthusiast 🤖\nBuilding the future', avatar: 'https://i.pravatar.cc/150?img=2', isPublic: true },
-        { id: 'u3', username: 'zen_vibes', name: 'Zen Vibes', email: 'zen@demo.com', password: 'demo123', bio: 'Peace & positivity 🧘', avatar: 'https://i.pravatar.cc/150?img=3', isPublic: true },
-        { id: 'u4', username: 'art_soul', name: 'Art Soul', email: 'art@demo.com', password: 'demo123', bio: 'Artist | Painter 🎨', avatar: 'https://i.pravatar.cc/150?img=4', isPublic: true },
-        { id: 'u5', username: 'wanderlust', name: 'Wander Lust', email: 'wander@demo.com', password: 'demo123', bio: 'Traveler 🌍 | 30 countries', avatar: 'https://i.pravatar.cc/150?img=5', isPublic: false },
-        { id: 'u6', username: 'foodie_queen', name: 'Foodie Queen', email: 'foodie@demo.com', password: 'demo123', bio: 'Eat. Cook. Repeat. 🍕', avatar: 'https://i.pravatar.cc/150?img=6', isPublic: true },
-        { id: 'u7', username: 'fit_life', name: 'Fit Life', email: 'fit@demo.com', password: 'demo123', bio: 'Fitness is a lifestyle 💪', avatar: 'https://i.pravatar.cc/150?img=7', isPublic: true },
-        { id: 'u8', username: 'music_maven', name: 'Music Maven', email: 'music@demo.com', password: 'demo123', bio: 'Lost in melodies 🎵', avatar: 'https://i.pravatar.cc/150?img=8', isPublic: true },
-    ];
-
-    const posts = [
-        { id: 'p1', userId: 'u2', image: 'https://picsum.photos/id/10/800/800', caption: 'Exploring the nexus of technology and nature 🌿💻 #future #genx', likes: 234, time: '2h', createdAt: Date.now() - 7200000 },
-        { id: 'p2', userId: 'u3', image: 'https://picsum.photos/id/20/800/800', caption: 'Pure serenity in the digital age ✨ #peace', likes: 856, time: '5h', createdAt: Date.now() - 18000000 },
-        { id: 'p3', userId: 'u4', image: 'https://picsum.photos/id/30/800/800', caption: 'My latest painting 🎨 What do you think?', likes: 412, time: '8h', createdAt: Date.now() - 28800000 },
-        { id: 'p4', userId: 'u6', image: 'https://picsum.photos/id/40/800/800', caption: 'Sunday brunch vibes 🥞☕', likes: 1023, time: '12h', createdAt: Date.now() - 43200000 },
-        { id: 'p5', userId: 'u1', image: 'https://picsum.photos/id/50/800/800', caption: 'Golden hour magic 🌅', likes: 567, time: '1d', createdAt: Date.now() - 86400000 },
-        { id: 'p6', userId: 'u5', image: 'https://picsum.photos/id/60/800/800', caption: 'Somewhere between the mountains ⛰️', likes: 789, time: '1d', createdAt: Date.now() - 90000000 },
-        { id: 'p7', userId: 'u7', image: 'https://picsum.photos/id/70/800/800', caption: 'Morning workout done! 💪🔥', likes: 345, time: '2d', createdAt: Date.now() - 172800000 },
-        { id: 'p8', userId: 'u8', image: 'https://picsum.photos/id/80/800/800', caption: 'Late night studio sessions 🎵🌙', likes: 678, time: '3d', createdAt: Date.now() - 259200000 },
-    ];
-
-    const comments = [
-        { id: 'c1', postId: 'p1', userId: 'u3', text: 'This is amazing! 🔥', time: '1h', likes: 12 },
-        { id: 'c2', postId: 'p1', userId: 'u4', text: 'Love the composition', time: '30m', likes: 3 },
-        { id: 'c3', postId: 'p2', userId: 'u1', text: 'So peaceful ✨', time: '4h', likes: 8 },
-        { id: 'c4', postId: 'p3', userId: 'u2', text: 'Beautiful work!', time: '6h', likes: 15 },
-        { id: 'c5', postId: 'p4', userId: 'u7', text: 'Yummy! 😋', time: '10h', likes: 5 },
-    ];
-
-    setStore(STORAGE_KEYS.USERS, users);
-    setStore(STORAGE_KEYS.POSTS, posts);
-    setStore(STORAGE_KEYS.COMMENTS, comments);
-    setStore(STORAGE_KEYS.FOLLOWS, []);
-    setStore(STORAGE_KEYS.LIKES, []);
-    setStore(STORAGE_KEYS.SAVED, []);
-    setStore(STORAGE_KEYS.NOTIFICATIONS, []);
-    setStore(STORAGE_KEYS.MESSAGES, []);
-    setStore(STORAGE_KEYS.STORIES, [
-        { id: 's1', userId: 'u1', viewed: false },
-        { id: 's2', userId: 'u2', viewed: false },
-        { id: 's3', userId: 'u3', viewed: false },
-        { id: 's4', userId: 'u4', viewed: false },
-        { id: 's5', userId: 'u6', viewed: false },
-    ]);
-}
-
-seedData();
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // ===== AUTH =====
 export const auth = {
-    signup(username, email, password, name) {
-        const users = getStore(STORAGE_KEYS.USERS);
-        if (users.find(u => u.username === username)) return { error: 'Username already taken' };
-        if (users.find(u => u.email === email)) return { error: 'Email already registered' };
-        const newUser = {
-            id: 'u_' + Date.now(),
+    async signup(username, email, password, name) {
+        // Check if username exists
+        const { data: existing } = await supabase.from('users').select('id').eq('username', username).maybeSingle();
+        if (existing) return { error: 'Username already taken' };
+
+        const { data, error } = await supabase.from('users').insert({
             username,
-            email,
+            email: email || `${username}@genx.app`,
             password,
             name: name || username,
-            bio: '',
             avatar: `https://i.pravatar.cc/150?u=${username}`,
-            isPublic: true,
-            createdAt: Date.now()
-        };
-        users.push(newUser);
-        setStore(STORAGE_KEYS.USERS, users);
-        const { password: _, ...safeUser } = newUser;
-        setStore(STORAGE_KEYS.CURRENT_USER, safeUser);
+            is_public: true,
+        }).select().single();
+
+        if (error) return { error: error.message };
+        const { password: _, ...safeUser } = data;
+        localStorage.setItem('genx_current_user', JSON.stringify(safeUser));
         return { user: safeUser };
     },
 
-    login(emailOrUsername, password) {
-        const users = getStore(STORAGE_KEYS.USERS);
-        const user = users.find(u => (u.email === emailOrUsername || u.username === emailOrUsername) && u.password === password);
-        if (!user) return { error: 'Invalid credentials' };
-        const { password: _, ...safeUser } = user;
-        setStore(STORAGE_KEYS.CURRENT_USER, safeUser);
+    async login(emailOrUsername, password) {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .or(`email.eq.${emailOrUsername},username.eq.${emailOrUsername}`)
+            .eq('password', password)
+            .maybeSingle();
+
+        if (error || !data) return { error: 'Invalid credentials' };
+        const { password: _, ...safeUser } = data;
+        localStorage.setItem('genx_current_user', JSON.stringify(safeUser));
         return { user: safeUser };
     },
 
     logout() {
-        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+        localStorage.removeItem('genx_current_user');
     },
 
     getCurrentUser() {
-        return getStoreObj(STORAGE_KEYS.CURRENT_USER);
+        try {
+            return JSON.parse(localStorage.getItem('genx_current_user')) || null;
+        } catch { return null; }
     },
 
-    updateProfile(userId, updates) {
-        const users = getStore(STORAGE_KEYS.USERS);
-        const idx = users.findIndex(u => u.id === userId);
-        if (idx === -1) return { error: 'User not found' };
-        users[idx] = { ...users[idx], ...updates };
-        setStore(STORAGE_KEYS.USERS, users);
-        const { password: _, ...safeUser } = users[idx];
-        setStore(STORAGE_KEYS.CURRENT_USER, safeUser);
+    async updateProfile(userId, updates) {
+        const { data, error } = await supabase
+            .from('users')
+            .update(updates)
+            .eq('id', userId)
+            .select()
+            .single();
+
+        if (error) return { error: error.message };
+        const { password: _, ...safeUser } = data;
+        localStorage.setItem('genx_current_user', JSON.stringify(safeUser));
         return { user: safeUser };
     }
 };
 
 // ===== USERS =====
 export const users = {
-    getById(id) {
-        return getStore(STORAGE_KEYS.USERS).find(u => u.id === id) || null;
+    async getById(id) {
+        const { data } = await supabase.from('users').select('id,username,name,email,bio,avatar,phone,is_public,created_at').eq('id', id).maybeSingle();
+        return data;
     },
-    getByUsername(username) {
-        return getStore(STORAGE_KEYS.USERS).find(u => u.username === username) || null;
+    async getByUsername(username) {
+        const { data } = await supabase.from('users').select('id,username,name,email,bio,avatar,phone,is_public,created_at').eq('username', username).maybeSingle();
+        return data;
     },
-    search(query) {
+    async search(query) {
         if (!query || query.length < 1) return [];
-        const q = query.toLowerCase();
-        return getStore(STORAGE_KEYS.USERS).filter(u =>
-            u.username.toLowerCase().includes(q) || (u.name && u.name.toLowerCase().includes(q))
-        );
+        const { data } = await supabase.from('users')
+            .select('id,username,name,avatar')
+            .or(`username.ilike.%${query}%,name.ilike.%${query}%`)
+            .limit(20);
+        return data || [];
     },
-    getAll() {
-        return getStore(STORAGE_KEYS.USERS);
+    async getAll() {
+        const { data } = await supabase.from('users').select('id,username,name,email,bio,avatar,phone,is_public,created_at');
+        return data || [];
     }
 };
 
 // ===== POSTS =====
 export const posts = {
-    getAll() {
-        return getStore(STORAGE_KEYS.POSTS).sort((a, b) => b.createdAt - a.createdAt);
+    async getAll() {
+        const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+        return data || [];
     },
-    getByUser(userId) {
-        return getStore(STORAGE_KEYS.POSTS).filter(p => p.userId === userId).sort((a, b) => b.createdAt - a.createdAt);
+    async getByUser(userId) {
+        const { data } = await supabase.from('posts').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+        return data || [];
     },
-    create(userId, image, caption) {
-        const allPosts = getStore(STORAGE_KEYS.POSTS);
-        const newPost = {
-            id: 'p_' + Date.now(),
-            userId,
+    async create(userId, image, caption) {
+        const { data, error } = await supabase.from('posts').insert({
+            user_id: userId,
             image,
             caption,
-            likes: 0,
-            time: 'now',
-            createdAt: Date.now()
-        };
-        allPosts.unshift(newPost);
-        setStore(STORAGE_KEYS.POSTS, allPosts);
+            likes_count: 0,
+        }).select().single();
+
+        if (error) return null;
 
         // Notify followers
-        const follows = getStore(STORAGE_KEYS.FOLLOWS);
-        const followers = follows.filter(f => f.targetId === userId).map(f => f.userId);
-        const notifs = getStore(STORAGE_KEYS.NOTIFICATIONS);
-        followers.forEach(fId => {
-            notifs.unshift({
-                id: 'n_' + Date.now() + '_' + fId,
+        const { data: followerData } = await supabase.from('follows').select('user_id').eq('target_id', userId);
+        if (followerData && followerData.length > 0) {
+            const notifs = followerData.map(f => ({
                 type: 'new_post',
-                fromUserId: userId,
-                toUserId: fId,
-                postId: newPost.id,
+                from_user_id: userId,
+                to_user_id: f.user_id,
+                post_id: data.id,
                 read: false,
-                createdAt: Date.now()
-            });
-        });
-        setStore(STORAGE_KEYS.NOTIFICATIONS, notifs);
+            }));
+            await supabase.from('notifications').insert(notifs);
+        }
 
-        return newPost;
+        return data;
     }
 };
 
 // ===== LIKES =====
 export const likes = {
-    toggle(userId, postId) {
-        const allLikes = getStore(STORAGE_KEYS.LIKES);
-        const idx = allLikes.findIndex(l => l.userId === userId && l.postId === postId);
-        const allPosts = getStore(STORAGE_KEYS.POSTS);
-        const postIdx = allPosts.findIndex(p => p.id === postId);
+    async toggle(userId, postId) {
+        const { data: existing } = await supabase.from('likes')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('post_id', postId)
+            .maybeSingle();
 
-        if (idx > -1) {
-            allLikes.splice(idx, 1);
-            if (postIdx > -1) allPosts[postIdx].likes = Math.max(0, allPosts[postIdx].likes - 1);
-            setStore(STORAGE_KEYS.LIKES, allLikes);
-            setStore(STORAGE_KEYS.POSTS, allPosts);
+        if (existing) {
+            await supabase.from('likes').delete().eq('id', existing.id);
+            await supabase.rpc('decrement_likes', { p_post_id: postId }).catch(() => {
+                // Fallback: manual update
+                supabase.from('posts').select('likes_count').eq('id', postId).single().then(({ data }) => {
+                    if (data) supabase.from('posts').update({ likes_count: Math.max(0, data.likes_count - 1) }).eq('id', postId);
+                });
+            });
             return false;
         } else {
-            allLikes.push({ userId, postId });
-            if (postIdx > -1) {
-                allPosts[postIdx].likes += 1;
-                // Notification
-                const notifs = getStore(STORAGE_KEYS.NOTIFICATIONS);
-                if (allPosts[postIdx].userId !== userId) {
-                    notifs.unshift({
-                        id: 'n_' + Date.now(),
-                        type: 'like',
-                        fromUserId: userId,
-                        toUserId: allPosts[postIdx].userId,
-                        postId,
-                        read: false,
-                        createdAt: Date.now()
-                    });
-                    setStore(STORAGE_KEYS.NOTIFICATIONS, notifs);
-                }
+            await supabase.from('likes').insert({ user_id: userId, post_id: postId });
+            await supabase.rpc('increment_likes', { p_post_id: postId }).catch(() => {
+                supabase.from('posts').select('likes_count').eq('id', postId).single().then(({ data }) => {
+                    if (data) supabase.from('posts').update({ likes_count: data.likes_count + 1 }).eq('id', postId);
+                });
+            });
+
+            // Get post owner for notification
+            const { data: post } = await supabase.from('posts').select('user_id').eq('id', postId).single();
+            if (post && post.user_id !== userId) {
+                await supabase.from('notifications').insert({
+                    type: 'like',
+                    from_user_id: userId,
+                    to_user_id: post.user_id,
+                    post_id: postId,
+                    read: false,
+                });
             }
-            setStore(STORAGE_KEYS.LIKES, allLikes);
-            setStore(STORAGE_KEYS.POSTS, allPosts);
             return true;
         }
     },
-    isLiked(userId, postId) {
-        return getStore(STORAGE_KEYS.LIKES).some(l => l.userId === userId && l.postId === postId);
+    async isLiked(userId, postId) {
+        const { data } = await supabase.from('likes').select('id').eq('user_id', userId).eq('post_id', postId).maybeSingle();
+        return !!data;
     }
 };
 
 // ===== SAVED =====
 export const saved = {
-    toggle(userId, postId) {
-        const all = getStore(STORAGE_KEYS.SAVED);
-        const idx = all.findIndex(s => s.userId === userId && s.postId === postId);
-        if (idx > -1) { all.splice(idx, 1); setStore(STORAGE_KEYS.SAVED, all); return false; }
-        else { all.push({ userId, postId }); setStore(STORAGE_KEYS.SAVED, all); return true; }
+    async toggle(userId, postId) {
+        const { data: existing } = await supabase.from('saved').select('id').eq('user_id', userId).eq('post_id', postId).maybeSingle();
+        if (existing) {
+            await supabase.from('saved').delete().eq('id', existing.id);
+            return false;
+        } else {
+            // We need a saved table — let's use localStorage fallback for now
+            const all = JSON.parse(localStorage.getItem('genx_saved') || '[]');
+            all.push({ userId, postId });
+            localStorage.setItem('genx_saved', JSON.stringify(all));
+            return true;
+        }
     },
-    isSaved(userId, postId) {
-        return getStore(STORAGE_KEYS.SAVED).some(s => s.userId === userId && s.postId === postId);
+    async isSaved(userId, postId) {
+        // Use localStorage for saved (no saved table in schema — keep simple)
+        const all = JSON.parse(localStorage.getItem('genx_saved') || '[]');
+        return all.some(s => s.userId === userId && s.postId === postId);
     },
-    getByUser(userId) {
-        const all = getStore(STORAGE_KEYS.SAVED).filter(s => s.userId === userId);
-        const allPosts = getStore(STORAGE_KEYS.POSTS);
-        return all.map(s => allPosts.find(p => p.id === s.postId)).filter(Boolean);
+    async getByUser(userId) {
+        const all = JSON.parse(localStorage.getItem('genx_saved') || '[]');
+        const savedPostIds = all.filter(s => s.userId === userId).map(s => s.postId);
+        if (savedPostIds.length === 0) return [];
+        const { data } = await supabase.from('posts').select('*').in('id', savedPostIds);
+        return data || [];
     }
 };
 
 // ===== COMMENTS =====
 export const comments = {
-    getByPost(postId) {
-        return getStore(STORAGE_KEYS.COMMENTS).filter(c => c.postId === postId);
+    async getByPost(postId) {
+        const { data } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true });
+        return data || [];
     },
-    add(userId, postId, text) {
-        const all = getStore(STORAGE_KEYS.COMMENTS);
-        const newComment = {
-            id: 'c_' + Date.now(),
-            postId,
-            userId,
+    async add(userId, postId, text) {
+        const { data, error } = await supabase.from('comments').insert({
+            post_id: postId,
+            user_id: userId,
             text,
-            time: 'now',
             likes: 0,
-            createdAt: Date.now()
-        };
-        all.push(newComment);
-        setStore(STORAGE_KEYS.COMMENTS, all);
+        }).select().single();
+
+        if (error) return null;
 
         // Notification
-        const allPosts = getStore(STORAGE_KEYS.POSTS);
-        const post = allPosts.find(p => p.id === postId);
-        if (post && post.userId !== userId) {
-            const notifs = getStore(STORAGE_KEYS.NOTIFICATIONS);
-            notifs.unshift({
-                id: 'n_' + Date.now(),
+        const { data: post } = await supabase.from('posts').select('user_id').eq('id', postId).single();
+        if (post && post.user_id !== userId) {
+            await supabase.from('notifications').insert({
                 type: 'comment',
-                fromUserId: userId,
-                toUserId: post.userId,
-                postId,
+                from_user_id: userId,
+                to_user_id: post.user_id,
+                post_id: postId,
                 text,
                 read: false,
-                createdAt: Date.now()
             });
-            setStore(STORAGE_KEYS.NOTIFICATIONS, notifs);
         }
-        return newComment;
+        return data;
     }
 };
 
 // ===== FOLLOWS =====
 export const follows = {
-    toggle(userId, targetId) {
-        const all = getStore(STORAGE_KEYS.FOLLOWS);
-        const idx = all.findIndex(f => f.userId === userId && f.targetId === targetId);
-        if (idx > -1) {
-            all.splice(idx, 1);
-            setStore(STORAGE_KEYS.FOLLOWS, all);
+    async toggle(userId, targetId) {
+        const { data: existing } = await supabase.from('follows').select('id').eq('user_id', userId).eq('target_id', targetId).maybeSingle();
+        if (existing) {
+            await supabase.from('follows').delete().eq('id', existing.id);
             return false;
         } else {
-            all.push({ userId, targetId, createdAt: Date.now() });
-            setStore(STORAGE_KEYS.FOLLOWS, all);
-            // Notification
-            const notifs = getStore(STORAGE_KEYS.NOTIFICATIONS);
-            notifs.unshift({
-                id: 'n_' + Date.now(),
+            await supabase.from('follows').insert({ user_id: userId, target_id: targetId });
+            await supabase.from('notifications').insert({
                 type: 'follow',
-                fromUserId: userId,
-                toUserId: targetId,
+                from_user_id: userId,
+                to_user_id: targetId,
                 read: false,
-                createdAt: Date.now()
             });
-            setStore(STORAGE_KEYS.NOTIFICATIONS, notifs);
             return true;
         }
     },
-    isFollowing(userId, targetId) {
-        return getStore(STORAGE_KEYS.FOLLOWS).some(f => f.userId === userId && f.targetId === targetId);
+    async isFollowing(userId, targetId) {
+        const { data } = await supabase.from('follows').select('id').eq('user_id', userId).eq('target_id', targetId).maybeSingle();
+        return !!data;
     },
-    getFollowers(userId) {
-        return getStore(STORAGE_KEYS.FOLLOWS).filter(f => f.targetId === userId);
+    async getFollowers(userId) {
+        const { data } = await supabase.from('follows').select('*').eq('target_id', userId);
+        return data || [];
     },
-    getFollowing(userId) {
-        return getStore(STORAGE_KEYS.FOLLOWS).filter(f => f.userId === userId);
+    async getFollowing(userId) {
+        const { data } = await supabase.from('follows').select('*').eq('user_id', userId);
+        return data || [];
     }
 };
 
 // ===== STORIES =====
 export const stories = {
-    getAll() { return getStore(STORAGE_KEYS.STORIES); },
-    add(userId) {
-        const all = getStore(STORAGE_KEYS.STORIES);
-        all.push({ id: 's_' + Date.now(), userId, viewed: false, createdAt: Date.now() });
-        setStore(STORAGE_KEYS.STORIES, all);
+    async getAll() {
+        const { data } = await supabase.from('stories').select('*').order('created_at', { ascending: false });
+        return data || [];
+    },
+    async add(userId) {
+        await supabase.from('stories').insert({ user_id: userId });
     }
 };
 
 // ===== NOTIFICATIONS =====
 export const notifications = {
-    getForUser(userId) {
-        return getStore(STORAGE_KEYS.NOTIFICATIONS).filter(n => n.toUserId === userId).sort((a, b) => b.createdAt - a.createdAt);
+    async getForUser(userId) {
+        const { data } = await supabase.from('notifications').select('*').eq('to_user_id', userId).order('created_at', { ascending: false }).limit(50);
+        return data || [];
     },
-    markAllRead(userId) {
-        const all = getStore(STORAGE_KEYS.NOTIFICATIONS);
-        all.forEach(n => { if (n.toUserId === userId) n.read = true; });
-        setStore(STORAGE_KEYS.NOTIFICATIONS, all);
+    async markAllRead(userId) {
+        await supabase.from('notifications').update({ read: true }).eq('to_user_id', userId).eq('read', false);
     },
-    getUnreadCount(userId) {
-        return getStore(STORAGE_KEYS.NOTIFICATIONS).filter(n => n.toUserId === userId && !n.read).length;
+    async getUnreadCount(userId) {
+        const { count } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('to_user_id', userId).eq('read', false);
+        return count || 0;
     }
 };
 
 // ===== MESSAGES =====
 export const messages = {
-    getConversations(userId) {
-        const allMsgs = getStore(STORAGE_KEYS.MESSAGES);
+    async getConversations(userId) {
+        // Get all messages involving this user
+        const { data: allMsgs } = await supabase.from('messages')
+            .select('*')
+            .or(`from_id.eq.${userId},to_id.eq.${userId}`)
+            .order('created_at', { ascending: false });
+
+        if (!allMsgs) return [];
         const convMap = {};
         allMsgs.forEach(m => {
-            if (m.from === userId || m.to === userId) {
-                const otherId = m.from === userId ? m.to : m.from;
-                if (!convMap[otherId] || convMap[otherId].createdAt < m.createdAt) {
-                    convMap[otherId] = m;
-                }
-            }
+            const otherId = m.from_id === userId ? m.to_id : m.from_id;
+            if (!convMap[otherId]) convMap[otherId] = m;
         });
         return Object.entries(convMap).map(([otherId, lastMsg]) => ({
             userId: otherId,
             lastMessage: lastMsg.text || '📷 Photo',
-            time: lastMsg.time || 'now',
-            createdAt: lastMsg.createdAt
-        })).sort((a, b) => b.createdAt - a.createdAt);
+            time: lastMsg.created_at,
+            createdAt: lastMsg.created_at
+        }));
     },
-    getMessages(userId1, userId2) {
-        return getStore(STORAGE_KEYS.MESSAGES)
-            .filter(m => (m.from === userId1 && m.to === userId2) || (m.from === userId2 && m.to === userId1))
-            .sort((a, b) => a.createdAt - b.createdAt);
+    async getMessages(userId1, userId2) {
+        const { data } = await supabase.from('messages')
+            .select('*')
+            .or(`and(from_id.eq.${userId1},to_id.eq.${userId2}),and(from_id.eq.${userId2},to_id.eq.${userId1})`)
+            .order('created_at', { ascending: true });
+        return data || [];
     },
-    send(from, to, text, type = 'text', imageUrl = null) {
-        const all = getStore(STORAGE_KEYS.MESSAGES);
-        const msg = {
-            id: 'm_' + Date.now(),
-            from,
-            to,
+    async send(from, to, text, type = 'text', imageUrl = null) {
+        const { data } = await supabase.from('messages').insert({
+            from_id: from,
+            to_id: to,
             text,
             type,
-            imageUrl,
+            image_url: imageUrl,
             viewed: false,
-            time: 'now',
-            createdAt: Date.now()
-        };
-        all.push(msg);
-        setStore(STORAGE_KEYS.MESSAGES, all);
-        return msg;
+        }).select().single();
+        return data;
     },
-    markViewed(msgId) {
-        const all = getStore(STORAGE_KEYS.MESSAGES);
-        const idx = all.findIndex(m => m.id === msgId);
-        if (idx > -1) {
-            if (all[idx].type === 'one-time') {
-                all.splice(idx, 1);
-            } else {
-                all[idx].viewed = true;
-            }
-            setStore(STORAGE_KEYS.MESSAGES, all);
-        }
+    async markViewed(msgId) {
+        await supabase.from('messages').update({ viewed: true }).eq('id', msgId);
     },
-    getUnreadCount(userId) {
-        return getStore(STORAGE_KEYS.MESSAGES).filter(m => m.to === userId && !m.viewed).length;
+    async getUnreadCount(userId) {
+        const { count } = await supabase.from('messages').select('*', { count: 'exact', head: true }).eq('to_id', userId).eq('viewed', false);
+        return count || 0;
     },
-    markConversationRead(userId, otherUserId) {
-        const all = getStore(STORAGE_KEYS.MESSAGES);
-        all.forEach(m => {
-            if (m.from === otherUserId && m.to === userId && !m.viewed) {
-                m.viewed = true;
-            }
-        });
-        setStore(STORAGE_KEYS.MESSAGES, all);
+    async markConversationRead(userId, otherUserId) {
+        await supabase.from('messages').update({ viewed: true }).eq('from_id', otherUserId).eq('to_id', userId).eq('viewed', false);
     }
 };
 
-// ===== THEME =====
+// ===== THEME (stays local) =====
 export const theme = {
-    get() { return localStorage.getItem(STORAGE_KEYS.THEME) || 'dark'; },
-    set(t) { localStorage.setItem(STORAGE_KEYS.THEME, t); document.documentElement.setAttribute('data-theme', t); },
+    get() { return localStorage.getItem('genx_theme') || 'dark'; },
+    set(t) { localStorage.setItem('genx_theme', t); document.documentElement.setAttribute('data-theme', t); },
     toggle() {
         const current = this.get();
         const next = current === 'dark' ? 'light' : 'dark';
@@ -478,5 +356,42 @@ export const theme = {
     },
     init() { this.set(this.get()); }
 };
+
+// ===== REALTIME SUBSCRIPTIONS =====
+export function subscribeToMessages(userId, callback) {
+    return supabase
+        .channel('messages-channel')
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `to_id=eq.${userId}`,
+        }, payload => callback(payload.new))
+        .subscribe();
+}
+
+export function subscribeToNotifications(userId, callback) {
+    return supabase
+        .channel('notifications-channel')
+        .on('postgres_changes', {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `to_user_id=eq.${userId}`,
+        }, payload => callback(payload.new))
+        .subscribe();
+}
+
+export function subscribeToCallSignals(userId, callback) {
+    return supabase
+        .channel('calls-channel')
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'call_signals',
+            filter: `to_id=eq.${userId}`,
+        }, payload => callback(payload))
+        .subscribe();
+}
 
 export default { auth, users, posts, likes, saved, comments, follows, stories, notifications, messages, theme };

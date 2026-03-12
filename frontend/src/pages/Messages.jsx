@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Phone, Video, Image, Send, ArrowLeft, Camera, Gamepad2, Eye, Mic, MicOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { messages as msgStore, users as usersStore, follows as followsStore } from '../lib/store';
+import { messages as msgStore, users as usersStore, follows as followsStore, subscribeToMessages } from '../lib/store';
 import { initiateCall } from '../lib/callSignaling';
 import sounds from '../lib/sounds';
 import VideoCall from '../components/VideoCall';
@@ -13,39 +13,102 @@ export default function Messages() {
     const [selectedChat, setSelectedChat] = useState(null);
     const [message, setMessage] = useState('');
     const [chatMsgs, setChatMsgs] = useState([]);
+    const [allChatUsers, setAllChatUsers] = useState([]);
+    const [selectedUser, setSelectedUser] = useState(null);
     const [showVideoCall, setShowVideoCall] = useState(false);
     const [showAudioCall, setShowAudioCall] = useState(false);
     const [showWatchTogether, setShowWatchTogether] = useState(false);
     const [showGameMenu, setShowGameMenu] = useState(false);
+    const [loading, setLoading] = useState(true);
     const messagesEndRef = useRef(null);
 
-    const conversations = currentUser ? msgStore.getConversations(currentUser.id) : [];
-    const following = currentUser ? followsStore.getFollowing(currentUser.id) : [];
-    const allChatUsers = [...new Set([
-        ...conversations.map(c => c.userId),
-        ...following.map(f => f.targetId)
-    ])].map(id => {
-        const conv = conversations.find(c => c.userId === id);
-        const u = usersStore.getById(id);
-        return { userId: id, user: u, lastMessage: conv?.lastMessage || 'Start chatting...', time: conv?.time || '' };
-    }).filter(c => c.user);
-
+    // Load conversations
     useEffect(() => {
-        if (selectedChat && currentUser) {
-            setChatMsgs(msgStore.getMessages(currentUser.id, selectedChat));
-            msgStore.markConversationRead(currentUser.id, selectedChat);
+        if (!currentUser) return;
+        async function loadConversations() {
+            const [conversations, followingData] = await Promise.all([
+                msgStore.getConversations(currentUser.id),
+                followsStore.getFollowing(currentUser.id),
+            ]);
+
+            const userIds = [...new Set([
+                ...conversations.map(c => c.userId),
+                ...followingData.map(f => f.target_id)
+            ])];
+
+            const usersData = await Promise.all(userIds.map(id => usersStore.getById(id)));
+            const chatUsers = userIds.map(id => {
+                const conv = conversations.find(c => c.userId === id);
+                const u = usersData.find(u => u && u.id === id);
+                if (!u) return null;
+                return { userId: id, user: u, lastMessage: conv?.lastMessage || 'Start chatting...', time: conv?.time || '' };
+            }).filter(Boolean);
+
+            setAllChatUsers(chatUsers);
+            setLoading(false);
         }
+        loadConversations();
+    }, [currentUser]);
+
+    // Subscribe to real-time messages
+    useEffect(() => {
+        if (!currentUser) return;
+        const subscription = subscribeToMessages(currentUser.id, (newMsg) => {
+            // If this message is from the currently selected chat, add it
+            if (selectedChat && newMsg.from_id === selectedChat) {
+                setChatMsgs(prev => [...prev, newMsg]);
+                sounds.notification();
+            }
+            // Refresh conversation list
+            loadConversationList();
+        });
+        return () => subscription?.unsubscribe?.();
+    }, [currentUser, selectedChat]);
+
+    const loadConversationList = async () => {
+        if (!currentUser) return;
+        const conversations = await msgStore.getConversations(currentUser.id);
+        const userIds = [...new Set(conversations.map(c => c.userId))];
+        const usersData = await Promise.all(userIds.map(id => usersStore.getById(id)));
+        setAllChatUsers(prev => {
+            const existing = prev.map(c => c.userId);
+            const updated = userIds.map(id => {
+                const conv = conversations.find(c => c.userId === id);
+                const u = usersData.find(u => u && u.id === id);
+                if (!u) return null;
+                return { userId: id, user: u, lastMessage: conv?.lastMessage || '', time: conv?.time || '' };
+            }).filter(Boolean);
+            // Merge with existing (keep users from follows that don't have messages yet)
+            const newIds = updated.map(u => u.userId);
+            const kept = prev.filter(c => !newIds.includes(c.userId));
+            return [...updated, ...kept];
+        });
+    };
+
+    // Load chat messages when selecting a chat
+    useEffect(() => {
+        if (!selectedChat || !currentUser) return;
+        async function loadChat() {
+            const [msgs, user] = await Promise.all([
+                msgStore.getMessages(currentUser.id, selectedChat),
+                usersStore.getById(selectedChat),
+            ]);
+            setChatMsgs(msgs);
+            setSelectedUser(user);
+            await msgStore.markConversationRead(currentUser.id, selectedChat);
+        }
+        loadChat();
     }, [selectedChat, currentUser]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [chatMsgs]);
 
-    const handleSend = (e) => {
+    const handleSend = async (e) => {
         e.preventDefault();
         if (!message.trim() || !currentUser || !selectedChat) return;
-        msgStore.send(currentUser.id, selectedChat, message);
-        setChatMsgs(msgStore.getMessages(currentUser.id, selectedChat));
+        const msg = await msgStore.send(currentUser.id, selectedChat, message);
+        if (msg) setChatMsgs(prev => [...prev, msg]);
         setMessage('');
         sounds.send();
     };
@@ -54,12 +117,12 @@ export default function Messages() {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
-        input.onchange = (e) => {
+        input.onchange = async (e) => {
             const file = e.target.files?.[0];
             if (file && currentUser && selectedChat) {
                 const url = URL.createObjectURL(file);
-                msgStore.send(currentUser.id, selectedChat, '', 'image', url);
-                setChatMsgs(msgStore.getMessages(currentUser.id, selectedChat));
+                const msg = await msgStore.send(currentUser.id, selectedChat, '', 'image', url);
+                if (msg) setChatMsgs(prev => [...prev, msg]);
             }
         };
         input.click();
@@ -69,28 +132,39 @@ export default function Messages() {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
-        input.onchange = (e) => {
+        input.onchange = async (e) => {
             const file = e.target.files?.[0];
             if (file && currentUser && selectedChat) {
                 const url = URL.createObjectURL(file);
-                msgStore.send(currentUser.id, selectedChat, '📷 One-time photo', 'one-time', url);
-                setChatMsgs(msgStore.getMessages(currentUser.id, selectedChat));
+                const msg = await msgStore.send(currentUser.id, selectedChat, '📷 One-time photo', 'one-time', url);
+                if (msg) setChatMsgs(prev => [...prev, msg]);
             }
         };
         input.click();
     };
 
-    const handleGameInvite = (gameId) => {
+    const handleGameInvite = async (gameId) => {
         if (currentUser && selectedChat) {
             const gameNames = { ludo: '🎲 Ludo', chess: '♟️ Chess', flappy: '🐦 Flappy Bird', rps: '✊ Rock Paper Scissors', word: '🔤 Guess the Word' };
             const link = `${window.location.origin}/games/${gameId}?invite=${currentUser.id}`;
-            msgStore.send(currentUser.id, selectedChat, `🎮 Let's play ${gameNames[gameId]}! Join here: ${link}`, 'game-invite');
-            setChatMsgs(msgStore.getMessages(currentUser.id, selectedChat));
+            const msg = await msgStore.send(currentUser.id, selectedChat, `🎮 Let's play ${gameNames[gameId]}! Join here: ${link}`, 'game-invite');
+            if (msg) setChatMsgs(prev => [...prev, msg]);
             setShowGameMenu(false);
         }
     };
 
-    const selectedUser = selectedChat ? usersStore.getById(selectedChat) : null;
+    const formatTime = (time) => {
+        if (!time) return '';
+        const date = new Date(time);
+        const diff = Date.now() - date.getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) return `${mins}m ago`;
+        const hrs = Math.floor(mins / 60);
+        if (hrs < 24) return `${hrs}h ago`;
+        return `${Math.floor(hrs / 24)}d ago`;
+    };
+
+    if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>Loading messages...</div>;
 
     return (
         <>
@@ -114,7 +188,7 @@ export default function Messages() {
                                 <img className="avatar avatar-md" src={conv.user.avatar} alt="" />
                                 <div className="chat-item-info">
                                     <div className="chat-item-name">{conv.user.username}</div>
-                                    <div className="chat-item-last">{conv.lastMessage} · {conv.time}</div>
+                                    <div className="chat-item-last">{conv.lastMessage} · {formatTime(conv.time)}</div>
                                 </div>
                             </div>
                         ))}
@@ -147,7 +221,6 @@ export default function Messages() {
                             </button>
                         </div>
 
-                        {/* Game invite dropdown */}
                         {showGameMenu && (
                             <>
                                 <div className="game-menu-backdrop" onClick={() => setShowGameMenu(false)} />
@@ -160,9 +233,7 @@ export default function Messages() {
                                         { id: 'rps', name: '✊ Rock Paper Scissors' },
                                         { id: 'word', name: '🔤 Guess the Word' },
                                     ].map(game => (
-                                        <button key={game.id} className="chat-game-option" onClick={() => handleGameInvite(game.id)}>
-                                            {game.name}
-                                        </button>
+                                        <button key={game.id} className="chat-game-option" onClick={() => handleGameInvite(game.id)}>{game.name}</button>
                                     ))}
                                 </div>
                             </>
@@ -170,24 +241,16 @@ export default function Messages() {
 
                         <div className="chat-messages">
                             {chatMsgs.map(msg => (
-                                <div key={msg.id} className={`chat-msg ${msg.from === currentUser?.id ? 'sent' : 'received'} ${msg.type === 'one-time' ? 'one-time' : ''} ${msg.type === 'game-invite' ? 'game-invite-msg' : ''}`}>
+                                <div key={msg.id} className={`chat-msg ${(msg.from_id || msg.from) === currentUser?.id ? 'sent' : 'received'} ${msg.type === 'one-time' ? 'one-time' : ''} ${msg.type === 'game-invite' ? 'game-invite-msg' : ''}`}>
                                     {msg.type === 'image' || msg.type === 'one-time' ? (
-                                        msg.imageUrl ? (
+                                        (msg.image_url || msg.imageUrl) ? (
                                             <div>
-                                                <img src={msg.imageUrl} alt="" onClick={() => {
-                                                    if (msg.type === 'one-time' && msg.from !== currentUser?.id) {
-                                                        msgStore.markViewed(msg.id);
-                                                        setChatMsgs(msgStore.getMessages(currentUser.id, selectedChat));
-                                                    }
-                                                }} />
+                                                <img src={msg.image_url || msg.imageUrl} alt="" />
                                                 {msg.type === 'one-time' && <div style={{ fontSize: '0.75rem', marginTop: '4px', opacity: 0.7 }}>🔥 View once</div>}
                                             </div>
                                         ) : <span>{msg.text}</span>
                                     ) : msg.type === 'game-invite' ? (
-                                        <div className="game-invite-content">
-                                            <Gamepad2 size={18} />
-                                            <span>{msg.text}</span>
-                                        </div>
+                                        <div className="game-invite-content"><Gamepad2 size={18} /><span>{msg.text}</span></div>
                                     ) : msg.text}
                                 </div>
                             ))}
@@ -212,16 +275,9 @@ export default function Messages() {
                 )}
             </div>
 
-            {/* Overlays */}
-            {showVideoCall && selectedUser && (
-                <VideoCall user={selectedUser} onClose={() => setShowVideoCall(false)} />
-            )}
-            {showAudioCall && selectedUser && (
-                <AudioCall user={selectedUser} onClose={() => setShowAudioCall(false)} />
-            )}
-            {showWatchTogether && selectedUser && (
-                <WatchTogether user={selectedUser} onClose={() => setShowWatchTogether(false)} />
-            )}
+            {showVideoCall && selectedUser && <VideoCall user={selectedUser} onClose={() => setShowVideoCall(false)} />}
+            {showAudioCall && selectedUser && <AudioCall user={selectedUser} onClose={() => setShowAudioCall(false)} />}
+            {showWatchTogether && selectedUser && <WatchTogether user={selectedUser} onClose={() => setShowWatchTogether(false)} />}
         </>
     );
 }

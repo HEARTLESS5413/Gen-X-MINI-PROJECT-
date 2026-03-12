@@ -8,12 +8,37 @@ export default function Notifications() {
     const { user: currentUser } = useAuth();
     const navigate = useNavigate();
     const [notifs, setNotifs] = useState([]);
+    const [notifUsers, setNotifUsers] = useState({});
+    const [suggestedUsers, setSuggestedUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (currentUser) {
-            setNotifs(notifStore.getForUser(currentUser.id));
-            notifStore.markAllRead(currentUser.id);
+        if (!currentUser) return;
+        async function load() {
+            const notifsData = await notifStore.getForUser(currentUser.id);
+            setNotifs(notifsData);
+            await notifStore.markAllRead(currentUser.id);
+
+            // Load all unique users referenced in notifications
+            const userIds = [...new Set(notifsData.map(n => n.from_user_id || n.fromUserId).filter(Boolean))];
+            const usersData = await Promise.all(userIds.map(id => usersStore.getById(id)));
+            const userMap = {};
+            usersData.filter(Boolean).forEach(u => userMap[u.id] = u);
+            setNotifUsers(userMap);
+
+            // Load suggested users
+            const allUsers = await usersStore.getAll();
+            const suggested = [];
+            for (const u of allUsers) {
+                if (u.id === currentUser.id) continue;
+                const isFollowing = await followsStore.isFollowing(currentUser.id, u.id);
+                if (!isFollowing) suggested.push(u);
+                if (suggested.length >= 5) break;
+            }
+            setSuggestedUsers(suggested);
+            setLoading(false);
         }
+        load();
     }, [currentUser]);
 
     const getIcon = (type) => {
@@ -26,8 +51,7 @@ export default function Notifications() {
         }
     };
 
-    const getMessage = (notif) => {
-        const fromUser = usersStore.getById(notif.fromUserId);
+    const getMessage = (notif, fromUser) => {
         if (!fromUser) return '';
         switch (notif.type) {
             case 'like': return <><strong>{fromUser.username}</strong> liked your post</>;
@@ -39,7 +63,9 @@ export default function Notifications() {
     };
 
     const formatTime = (ts) => {
-        const diff = Date.now() - ts;
+        if (!ts) return '';
+        const date = new Date(ts);
+        const diff = Date.now() - date.getTime();
         const mins = Math.floor(diff / 60000);
         if (mins < 1) return 'now';
         if (mins < 60) return `${mins}m`;
@@ -48,10 +74,7 @@ export default function Notifications() {
         return `${Math.floor(hrs / 24)}d`;
     };
 
-    // Suggested users for "Suggested for you"
-    const suggestedUsers = usersStore.getAll()
-        .filter(u => u.id !== currentUser?.id && currentUser && !followsStore.isFollowing(currentUser.id, u.id))
-        .slice(0, 5);
+    if (loading) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-tertiary)' }}>Loading...</div>;
 
     return (
         <div className="notif-page">
@@ -66,24 +89,23 @@ export default function Notifications() {
             )}
 
             {notifs.map(notif => {
-                const fromUser = usersStore.getById(notif.fromUserId);
+                const fromUser = notifUsers[notif.from_user_id || notif.fromUserId];
                 if (!fromUser) return null;
                 return (
                     <div key={notif.id} className={`notif-item ${!notif.read ? 'unread' : ''}`}>
                         <img className="avatar avatar-md" src={fromUser.avatar} alt="" style={{ cursor: 'pointer' }}
                             onClick={() => navigate(`/profile/${fromUser.username}`)} />
                         <div className="notif-text">
-                            {getMessage(notif)}
-                            <span className="notif-time" style={{ marginLeft: '8px' }}>{formatTime(notif.createdAt)}</span>
+                            {getMessage(notif, fromUser)}
+                            <span className="notif-time" style={{ marginLeft: '8px' }}>{formatTime(notif.created_at || notif.createdAt)}</span>
                         </div>
                         {notif.type === 'follow' && (
-                            <FollowBtn userId={currentUser?.id} targetId={notif.fromUserId} />
+                            <FollowBtn userId={currentUser?.id} targetId={notif.from_user_id || notif.fromUserId} />
                         )}
                     </div>
                 );
             })}
 
-            {/* Suggested For You */}
             <div style={{ marginTop: '32px' }}>
                 <h3 style={{ fontWeight: '600', marginBottom: '16px' }}>Suggested for you</h3>
                 {suggestedUsers.map(u => (
@@ -103,11 +125,30 @@ export default function Notifications() {
 }
 
 function FollowBtn({ userId, targetId }) {
-    const [following, setFollowing] = useState(userId ? followsStore.isFollowing(userId, targetId) : false);
+    const [following, setFollowing] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (userId) {
+            followsStore.isFollowing(userId, targetId).then(result => {
+                setFollowing(result);
+                setLoading(false);
+            });
+        } else {
+            setLoading(false);
+        }
+    }, [userId, targetId]);
+
+    const handleToggle = async () => {
+        if (!userId) return;
+        const result = await followsStore.toggle(userId, targetId);
+        setFollowing(result);
+    };
+
+    if (loading) return null;
+
     return (
-        <button className={following ? 'btn-following' : 'btn-follow'} onClick={() => {
-            if (userId) { followsStore.toggle(userId, targetId); setFollowing(!following); }
-        }}>
+        <button className={following ? 'btn-following' : 'btn-follow'} onClick={handleToggle}>
             {following ? 'Following' : 'Follow'}
         </button>
     );
