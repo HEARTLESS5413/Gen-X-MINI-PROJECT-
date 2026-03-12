@@ -107,6 +107,30 @@ export async function finishGame(sessionId, winnerId) {
         .eq('id', sessionId);
 }
 
+// Leave game — opponent auto-wins
+export async function leaveGame(sessionId, userId) {
+    // Remove the player
+    await supabase.from('game_players')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('user_id', userId);
+
+    // Get remaining players
+    const remaining = await getGamePlayers(sessionId);
+    const winnerId = remaining.length === 1 ? remaining[0].user_id : null;
+
+    // Mark game_state with left info and finish
+    await supabase.from('game_sessions')
+        .update({
+            status: 'finished',
+            winner_id: winnerId,
+            game_state: { playerLeft: userId, leftAt: new Date().toISOString() },
+        })
+        .eq('id', sessionId);
+
+    return winnerId;
+}
+
 // Subscribe to game session changes
 export function subscribeToGame(sessionId, onUpdate) {
     const channel = supabase
@@ -132,8 +156,8 @@ export function subscribeToGame(sessionId, onUpdate) {
     return { unsubscribe: () => channel.unsubscribe() };
 }
 
-// Poll game state (reliable fallback)
-export function pollGameState(sessionId, callback, interval = 1000) {
+// Poll game state (optimized — 600ms)
+export function pollGameState(sessionId, callback, interval = 600) {
     const timer = setInterval(async () => {
         const [session, players] = await Promise.all([
             getGameSession(sessionId),

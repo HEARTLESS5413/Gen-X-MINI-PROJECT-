@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Mic, MicOff, Video as VideoIcon, VideoOff, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { submitMove, clearMoves, updatePlayerScore, updateRound, finishGame, pollGameState, updateGameState } from '../lib/gameEngine';
+import { submitMove, clearMoves, updatePlayerScore, updateRound, finishGame, pollGameState, updateGameState, leaveGame } from '../lib/gameEngine';
 
 const CHOICES = ['rock', 'paper', 'scissors'];
 const EMOJI = { rock: '🪨', paper: '📄', scissors: '✂️' };
@@ -21,37 +22,92 @@ export default function RPSGame({ sessionId, session, players, playerUsers, onCl
     const [currentRound, setCurrentRound] = useState(session?.current_round || 1);
     const [waiting, setWaiting] = useState(false);
     const [showResult, setShowResult] = useState(false);
+    const [playerLeft, setPlayerLeft] = useState(false);
+    const [isMicOn, setIsMicOn] = useState(false);
+    const [isCamOn, setIsCamOn] = useState(false);
+    const localStreamRef = useRef(null);
+    const localVideoRef = useRef(null);
+    const floatingCamRef = useRef(null);
     const pollRef = useRef(null);
 
     const opponent = players.find(p => p.user_id !== currentUser?.id);
-    const me = players.find(p => p.user_id === currentUser?.id);
 
     useEffect(() => {
-        // Init scores
         const s = {};
         players.forEach(p => { s[p.user_id] = p.score || 0; });
         setScores(s);
 
-        // Poll for opponent moves
         pollRef.current = pollGameState(sessionId, ({ session: sess, players: plrs }) => {
-            if (sess) {
-                setCurrentRound(sess.current_round || 1);
-                if (sess.status === 'finished') {
-                    onClose(); // will show results in lobby
-                }
-                // Check round result
-                if (sess.game_state?.lastRound === sess.current_round && sess.game_state?.result) {
-                    setRoundResult(sess.game_state.result);
-                    const om = plrs.find(p => p.user_id !== currentUser?.id);
-                    if (om?.move) setOpponentMove(om.move);
-                    setShowResult(true);
-                    plrs.forEach(p => { setScores(prev => ({ ...prev, [p.user_id]: p.score })); });
-                }
-            }
-        }, 800);
+            if (!sess) return;
+            setCurrentRound(sess.current_round || 1);
 
-        return () => { if (pollRef.current) pollRef.current(); };
+            // Check if opponent left
+            if (sess.game_state?.playerLeft && sess.game_state.playerLeft !== currentUser?.id) {
+                setPlayerLeft(true);
+                return;
+            }
+
+            if (sess.status === 'finished') {
+                if (sess.game_state?.playerLeft && sess.game_state.playerLeft !== currentUser?.id) {
+                    setPlayerLeft(true);
+                } else {
+                    onClose();
+                }
+                return;
+            }
+
+            if (sess.game_state?.lastRound === sess.current_round && sess.game_state?.result) {
+                setRoundResult(sess.game_state.result);
+                const om = plrs.find(p => p.user_id !== currentUser?.id);
+                if (om?.move) setOpponentMove(om.move);
+                setShowResult(true);
+                plrs.forEach(p => { setScores(prev => ({ ...prev, [p.user_id]: p.score })); });
+            }
+        }, 600);
+
+        return () => { if (pollRef.current) pollRef.current(); cleanupMedia(); };
     }, [sessionId]);
+
+    const cleanupMedia = () => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(t => t.stop());
+            localStreamRef.current = null;
+        }
+    };
+
+    const toggleMic = async () => {
+        if (isMicOn) {
+            localStreamRef.current?.getAudioTracks().forEach(t => t.stop());
+            setIsMicOn(false);
+        } else {
+            try {
+                const stream = localStreamRef.current || await navigator.mediaDevices.getUserMedia({ audio: true, video: isCamOn });
+                localStreamRef.current = stream;
+                setIsMicOn(true);
+            } catch (e) { console.error('Mic error:', e); }
+        }
+    };
+
+    const toggleCam = async () => {
+        if (isCamOn) {
+            localStreamRef.current?.getVideoTracks().forEach(t => t.stop());
+            if (localVideoRef.current) localVideoRef.current.srcObject = null;
+            setIsCamOn(false);
+        } else {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: isMicOn, video: true });
+                localStreamRef.current = stream;
+                if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+                setIsCamOn(true);
+            } catch (e) { console.error('Camera error:', e); }
+        }
+    };
+
+    const handleLeave = async () => {
+        cleanupMedia();
+        await leaveGame(sessionId, currentUser.id);
+        onClose();
+    };
 
     const handleMove = async (choice) => {
         if (myMove || waiting) return;
@@ -59,15 +115,14 @@ export default function RPSGame({ sessionId, session, players, playerUsers, onCl
         setWaiting(true);
         await submitMove(sessionId, currentUser.id, choice);
 
-        // Check if opponent also moved — poll faster
         const check = setInterval(async () => {
-            const { players: plrs } = await import('../lib/gameEngine').then(m => Promise.all([m.getGamePlayers(sessionId)]).then(([p]) => ({ players: p })));
+            const { getGamePlayers } = await import('../lib/gameEngine');
+            const plrs = await getGamePlayers(sessionId);
             const opp = plrs.find(p => p.user_id !== currentUser?.id);
             const mee = plrs.find(p => p.user_id === currentUser?.id);
 
             if (opp?.move && mee?.move) {
                 clearInterval(check);
-                // Evaluate round
                 const result = getWinner(mee.move, opp.move);
                 setOpponentMove(opp.move);
 
@@ -84,21 +139,17 @@ export default function RPSGame({ sessionId, session, players, playerUsers, onCl
                 setScores(newScores);
                 setShowResult(true);
 
-                // Update scores in DB
                 for (const p of plrs) {
                     await updatePlayerScore(sessionId, p.user_id, newScores[p.user_id] || 0);
                 }
 
-                // Save round result
                 await updateGameState(sessionId, {
                     lastRound: currentRound,
                     result: result === 'p1' ? `${currentUser.username} wins` : result === 'p2' ? `${playerUsers[opp.user_id]?.username} wins` : 'Draw',
                 });
 
-                // Next round or finish
                 setTimeout(async () => {
                     if (currentRound >= TOTAL_ROUNDS) {
-                        // Determine overall winner
                         const myScore = newScores[currentUser.id] || 0;
                         const oppScore = newScores[opp.user_id] || 0;
                         const winnerId = myScore > oppScore ? currentUser.id : oppScore > myScore ? opp.user_id : null;
@@ -113,20 +164,67 @@ export default function RPSGame({ sessionId, session, players, playerUsers, onCl
                         setShowResult(false);
                         setWaiting(false);
                     }
-                }, 2500);
+                }, 2000);
             }
-        }, 600);
+        }, 500);
     };
+
+    // Draggable floating camera
+    const handleCamDrag = (e) => {
+        if (!floatingCamRef.current) return;
+        const el = floatingCamRef.current;
+        const rect = el.getBoundingClientRect();
+        const ox = (e.clientX || e.touches?.[0]?.clientX || 0) - rect.left;
+        const oy = (e.clientY || e.touches?.[0]?.clientY || 0) - rect.top;
+        const move = (ev) => {
+            const x = (ev.clientX || ev.touches?.[0]?.clientX || 0) - ox;
+            const y = (ev.clientY || ev.touches?.[0]?.clientY || 0) - oy;
+            el.style.left = `${Math.max(0, Math.min(window.innerWidth - rect.width, x))}px`;
+            el.style.top = `${Math.max(0, Math.min(window.innerHeight - rect.height, y))}px`;
+            el.style.right = 'auto'; el.style.bottom = 'auto';
+        };
+        const up = () => { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); document.removeEventListener('touchmove', move); document.removeEventListener('touchend', up); };
+        document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+        document.addEventListener('touchmove', move); document.addEventListener('touchend', up);
+    };
+
+    // Player left notification
+    if (playerLeft) {
+        return (
+            <div className="game-overlay">
+                <div className="game-modal game-results">
+                    <div className="game-results-content">
+                        <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🏆</div>
+                        <h2 className="game-results-title">You Win!</h2>
+                        <p className="game-results-game" style={{ marginTop: '8px' }}>
+                            {playerUsers[opponent?.user_id]?.username || 'Opponent'} left the game
+                        </p>
+                        <button className="game-play-again-btn" onClick={onClose} style={{ marginTop: '20px' }}>Close</button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="game-overlay">
             <div className="game-modal game-rps">
                 <div className="game-header">
                     <h2>Rock Paper Scissors</h2>
-                    <span className="game-round-badge">Round {currentRound}/{TOTAL_ROUNDS}</span>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <span className="game-round-badge">Round {currentRound}/{TOTAL_ROUNDS}</span>
+                        <button className="game-media-btn" onClick={toggleMic} title={isMicOn ? 'Mute' : 'Unmute'}>
+                            {isMicOn ? <Mic size={16} /> : <MicOff size={16} />}
+                        </button>
+                        <button className="game-media-btn" onClick={toggleCam} title={isCamOn ? 'Camera off' : 'Camera on'}>
+                            {isCamOn ? <VideoIcon size={16} /> : <VideoOff size={16} />}
+                        </button>
+                        <button className="game-leave-btn" onClick={handleLeave} title="Leave Game">
+                            <LogOut size={16} />
+                        </button>
+                    </div>
                 </div>
 
-                {/* Scoreboard */}
                 <div className="game-rps-score">
                     <div className="rps-player">
                         <img src={currentUser?.avatar} alt="" className="rps-avatar" />
@@ -141,7 +239,6 @@ export default function RPSGame({ sessionId, session, players, playerUsers, onCl
                     </div>
                 </div>
 
-                {/* Round result */}
                 {showResult && (
                     <div className="rps-result">
                         <div className="rps-moves">
@@ -153,18 +250,12 @@ export default function RPSGame({ sessionId, session, players, playerUsers, onCl
                     </div>
                 )}
 
-                {/* Choice buttons */}
                 {!showResult && (
                     <div className="rps-choices">
                         <p className="rps-instruction">{waiting ? 'Waiting for opponent...' : 'Make your choice!'}</p>
                         <div className="rps-buttons">
                             {CHOICES.map(c => (
-                                <button
-                                    key={c}
-                                    className={`rps-choice-btn ${myMove === c ? 'selected' : ''} ${waiting ? 'disabled' : ''}`}
-                                    onClick={() => handleMove(c)}
-                                    disabled={waiting}
-                                >
+                                <button key={c} className={`rps-choice-btn ${myMove === c ? 'selected' : ''} ${waiting ? 'disabled' : ''}`} onClick={() => handleMove(c)} disabled={waiting}>
                                     <span className="rps-choice-emoji">{EMOJI[c]}</span>
                                     <span className="rps-choice-name">{c}</span>
                                 </button>
@@ -173,6 +264,13 @@ export default function RPSGame({ sessionId, session, players, playerUsers, onCl
                     </div>
                 )}
             </div>
+
+            {/* Floating camera */}
+            {isCamOn && (
+                <div className="game-floating-cam" ref={floatingCamRef} onMouseDown={handleCamDrag} onTouchStart={handleCamDrag}>
+                    <video ref={localVideoRef} autoPlay muted playsInline />
+                </div>
+            )}
         </div>
     );
 }

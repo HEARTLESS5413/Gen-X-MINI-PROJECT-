@@ -299,7 +299,8 @@ export const messages = {
         const { data: allMsgs } = await supabase.from('messages')
             .select('*')
             .or(`from_id.eq.${userId},to_id.eq.${userId}`)
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(200);
 
         if (!allMsgs) return [];
         const convMap = {};
@@ -318,7 +319,8 @@ export const messages = {
         const { data } = await supabase.from('messages')
             .select('*')
             .or(`and(from_id.eq.${userId1},to_id.eq.${userId2}),and(from_id.eq.${userId2},to_id.eq.${userId1})`)
-            .order('created_at', { ascending: true });
+            .order('created_at', { ascending: true })
+            .limit(100);
         return data || [];
     },
     async send(from, to, text, type = 'text', imageUrl = null) {
