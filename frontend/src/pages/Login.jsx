@@ -54,7 +54,7 @@ export default function Login() {
         <div className="auth-page">
             <div style={{ width: '100%', maxWidth: '420px' }}>
                 <div className="auth-card">
-                    <div className="auth-logo">Rimi</div>
+                    <div className="auth-logo">Gen-X</div>
 
                     {/* Google Login Button */}
                     <button

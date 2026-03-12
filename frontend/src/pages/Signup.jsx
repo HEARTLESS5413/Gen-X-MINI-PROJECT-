@@ -89,7 +89,7 @@ export default function Signup() {
         setLoading(true);
 
         // Create the account locally
-        const result = signup(form.username, form.email || `${form.username}@rimi.app`, form.password, form.name);
+        const result = signup(form.username, form.email || `${form.username}@genx.app`, form.password, form.name);
         if (result.error) {
             setError(result.error);
             setLoading(false);
@@ -97,7 +97,7 @@ export default function Signup() {
         }
 
         // Update the profile with additional info
-        const users = JSON.parse(localStorage.getItem('rimi_users') || '[]');
+        const users = JSON.parse(localStorage.getItem('genx_users') || '[]');
         const idx = users.findIndex(u => u.username === form.username);
         if (idx > -1) {
             users[idx].phone = form.phone;
@@ -105,18 +105,18 @@ export default function Signup() {
             if (profilePhotoPreview) {
                 users[idx].avatar = profilePhotoPreview;
             }
-            localStorage.setItem('rimi_users', JSON.stringify(users));
+            localStorage.setItem('genx_users', JSON.stringify(users));
         }
 
         // Also update current session
-        const currentUser = JSON.parse(localStorage.getItem('rimi_current_user') || 'null');
+        const currentUser = JSON.parse(localStorage.getItem('genx_current_user') || 'null');
         if (currentUser) {
             currentUser.phone = form.phone;
             currentUser.name = form.name;
             if (profilePhotoPreview) {
                 currentUser.avatar = profilePhotoPreview;
             }
-            localStorage.setItem('rimi_current_user', JSON.stringify(currentUser));
+            localStorage.setItem('genx_current_user', JSON.stringify(currentUser));
         }
 
         setLoading(false);
@@ -127,7 +127,7 @@ export default function Signup() {
         <div className="auth-page">
             <div style={{ width: '100%', maxWidth: '440px' }}>
                 <div className="auth-card">
-                    <div className="auth-logo">Rimi</div>
+                    <div className="auth-logo">Gen-X</div>
 
                     {/* Progress */}
                     <div className="signup-steps">

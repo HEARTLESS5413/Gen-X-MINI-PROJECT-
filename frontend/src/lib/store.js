@@ -10,17 +10,17 @@ export const supabase = supabaseUrl && supabaseAnonKey
 // ===== LOCAL STORAGE HELPERS (works without Supabase) =====
 
 const STORAGE_KEYS = {
-    USERS: 'rimi_users',
-    CURRENT_USER: 'rimi_current_user',
-    POSTS: 'rimi_posts',
-    STORIES: 'rimi_stories',
-    MESSAGES: 'rimi_messages',
-    NOTIFICATIONS: 'rimi_notifications',
-    FOLLOWS: 'rimi_follows',
-    COMMENTS: 'rimi_comments',
-    LIKES: 'rimi_likes',
-    SAVED: 'rimi_saved',
-    THEME: 'rimi_theme',
+    USERS: 'genx_users',
+    CURRENT_USER: 'genx_current_user',
+    POSTS: 'genx_posts',
+    STORIES: 'genx_stories',
+    MESSAGES: 'genx_messages',
+    NOTIFICATIONS: 'genx_notifications',
+    FOLLOWS: 'genx_follows',
+    COMMENTS: 'genx_comments',
+    LIKES: 'genx_likes',
+    SAVED: 'genx_saved',
+    THEME: 'genx_theme',
 };
 
 function getStore(key) {
@@ -44,7 +44,7 @@ function seedData() {
     if (getStore(STORAGE_KEYS.USERS).length > 0) return;
 
     const users = [
-        { id: 'u1', username: 'rimi_star', name: 'Rimi Star', email: 'rimi@demo.com', password: 'demo123', bio: 'Living my best life ✨\nContent creator | Dreamer', avatar: 'https://i.pravatar.cc/150?img=1', isPublic: true },
+        { id: 'u1', username: 'genx_star', name: 'GenX Star', email: 'genx@demo.com', password: 'demo123', bio: 'Living my best life ✨\nContent creator | Dreamer', avatar: 'https://i.pravatar.cc/150?img=1', isPublic: true },
         { id: 'u2', username: 'cyber_punk', name: 'Cyber Punk', email: 'cyber@demo.com', password: 'demo123', bio: 'Tech enthusiast 🤖\nBuilding the future', avatar: 'https://i.pravatar.cc/150?img=2', isPublic: true },
         { id: 'u3', username: 'zen_vibes', name: 'Zen Vibes', email: 'zen@demo.com', password: 'demo123', bio: 'Peace & positivity 🧘', avatar: 'https://i.pravatar.cc/150?img=3', isPublic: true },
         { id: 'u4', username: 'art_soul', name: 'Art Soul', email: 'art@demo.com', password: 'demo123', bio: 'Artist | Painter 🎨', avatar: 'https://i.pravatar.cc/150?img=4', isPublic: true },
@@ -55,7 +55,7 @@ function seedData() {
     ];
 
     const posts = [
-        { id: 'p1', userId: 'u2', image: 'https://picsum.photos/id/10/800/800', caption: 'Exploring the nexus of technology and nature 🌿💻 #future #rimi', likes: 234, time: '2h', createdAt: Date.now() - 7200000 },
+        { id: 'p1', userId: 'u2', image: 'https://picsum.photos/id/10/800/800', caption: 'Exploring the nexus of technology and nature 🌿💻 #future #genx', likes: 234, time: '2h', createdAt: Date.now() - 7200000 },
         { id: 'p2', userId: 'u3', image: 'https://picsum.photos/id/20/800/800', caption: 'Pure serenity in the digital age ✨ #peace', likes: 856, time: '5h', createdAt: Date.now() - 18000000 },
         { id: 'p3', userId: 'u4', image: 'https://picsum.photos/id/30/800/800', caption: 'My latest painting 🎨 What do you think?', likes: 412, time: '8h', createdAt: Date.now() - 28800000 },
         { id: 'p4', userId: 'u6', image: 'https://picsum.photos/id/40/800/800', caption: 'Sunday brunch vibes 🥞☕', likes: 1023, time: '12h', createdAt: Date.now() - 43200000 },

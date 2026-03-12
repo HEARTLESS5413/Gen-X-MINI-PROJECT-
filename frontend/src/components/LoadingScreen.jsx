@@ -29,7 +29,7 @@ export default function LoadingScreen({ onFinish }) {
             <div className="loading-content">
                 {/* Animated logo */}
                 <div className="loading-logo-wrap">
-                    <div className="loading-logo">Rimi</div>
+                    <div className="loading-logo">Gen-X</div>
                     <div className="loading-logo-glow" />
                 </div>
 

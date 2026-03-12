@@ -1,7 +1,7 @@
 {
-  "name": "rimi-backend",
+  "name": "genx-backend",
   "version": "1.0.0",
-  "description": "Backend for Rimi - a Gen Z social media platform",
+  "description": "Backend for Gen-X social media platform",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

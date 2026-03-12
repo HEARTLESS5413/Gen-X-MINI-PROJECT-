@@ -60,7 +60,7 @@ export default function Home() {
 
             {allPosts.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)' }}>
-                    <h2 style={{ fontWeight: '300', marginBottom: '12px' }}>Welcome to Rimi</h2>
+                    <h2 style={{ fontWeight: '300', marginBottom: '12px' }}>Welcome to Gen-X</h2>
                     <p>Follow people to see their posts here.</p>
                 </div>
             )}

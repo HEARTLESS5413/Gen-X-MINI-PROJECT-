@@ -14,7 +14,7 @@ const SearchModal = ({ isOpen, onClose }) => {
             setResults([
                 { id: 1, name: 'Cyber Punk', username: 'cyber_punk' },
                 { id: 2, name: 'Zen Viibes', username: 'zen_vibes' },
-                { id: 3, name: 'Rimi Star', username: 'rimi_star' }
+                { id: 3, name: 'GenX Star', username: 'genx_star' }
             ]);
         } else {
             setResults([]);

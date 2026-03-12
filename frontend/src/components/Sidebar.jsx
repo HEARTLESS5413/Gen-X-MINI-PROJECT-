@@ -52,7 +52,7 @@ export default function Sidebar({ onCreateClick, onSearchClick }) {
                             x="0"
                             y="40"
                         >
-                            Rimi
+                            Gen-X
                         </text>
                     </svg>
                 </div>

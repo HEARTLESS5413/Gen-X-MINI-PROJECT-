@@ -91,7 +91,7 @@ export default function Settings() {
                         <HelpCircle size={20} />
                         <div>
                             <div className="settings-item-label">Help</div>
-                            <div className="settings-item-desc">Get help with Rimi</div>
+                            <div className="settings-item-desc">Get help with Gen-X</div>
                         </div>
                     </div>
                     <ChevronRight size={18} color="var(--text-tertiary)" />

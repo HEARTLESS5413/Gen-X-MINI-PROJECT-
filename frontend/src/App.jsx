@@ -37,7 +37,7 @@ const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 function ProtectedRoute({ children }) {
     const { user, loading } = useAuth();
-    if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}><div className="auth-logo" style={{ fontSize: '3rem', fontWeight: '800', background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Rimi</div></div>;
+    if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}><div className="auth-logo" style={{ fontSize: '3rem', fontWeight: '800', background: 'var(--gradient-primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Gen-X</div></div>;
     if (!user) return <Navigate to="/login" replace />;
     return children;
 }
