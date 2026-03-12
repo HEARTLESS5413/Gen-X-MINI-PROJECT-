@@ -3,10 +3,12 @@ import { Phone, Video, Image, Send, ArrowLeft, Camera, Gamepad2, Eye, Mic, MicOf
 import { useAuth } from '../context/AuthContext';
 import { messages as msgStore, users as usersStore, follows as followsStore, subscribeToMessages } from '../lib/store';
 import { initiateCall } from '../lib/callSignaling';
+import { createGameSession } from '../lib/gameEngine';
 import sounds from '../lib/sounds';
 import VideoCall from '../components/VideoCall';
 import AudioCall from '../components/AudioCall';
 import WatchTogether from '../components/WatchTogether';
+import GameLobby from '../components/GameLobby';
 
 export default function Messages() {
     const { user: currentUser } = useAuth();
@@ -20,6 +22,7 @@ export default function Messages() {
     const [activeCallId, setActiveCallId] = useState(null);
     const [showWatchTogether, setShowWatchTogether] = useState(false);
     const [showGameMenu, setShowGameMenu] = useState(false);
+    const [activeGameSessionId, setActiveGameSessionId] = useState(null);
     const [loading, setLoading] = useState(true);
     const messagesEndRef = useRef(null);
 
@@ -146,10 +149,14 @@ export default function Messages() {
 
     const handleGameInvite = async (gameId) => {
         if (currentUser && selectedChat) {
-            const gameNames = { ludo: '🎲 Ludo', chess: '♟️ Chess', flappy: '🐦 Flappy Bird', rps: '✊ Rock Paper Scissors', word: '🔤 Guess the Word' };
-            const link = `${window.location.origin}/games/${gameId}?invite=${currentUser.id}`;
-            const msg = await msgStore.send(currentUser.id, selectedChat, `🎮 Let's play ${gameNames[gameId]}! Join here: ${link}`, 'game-invite');
-            if (msg) setChatMsgs(prev => [...prev, msg]);
+            const gameNames = { rps: '✊ Rock Paper Scissors', tictactoe: '⭕ Tic Tac Toe' };
+            // Create a real game session in Supabase
+            const session = await createGameSession(currentUser.id, gameId, selectedChat);
+            if (session) {
+                const msg = await msgStore.send(currentUser.id, selectedChat, `🎮 Let's play ${gameNames[gameId]}! Join now!`, 'game-invite');
+                if (msg) setChatMsgs(prev => [...prev, msg]);
+                setActiveGameSessionId(session.id);
+            }
             setShowGameMenu(false);
         }
     };
@@ -208,10 +215,26 @@ export default function Messages() {
                                 <div style={{ fontWeight: '600' }}>{selectedUser.username}</div>
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Active now</div>
                             </div>
-                            <button className="btn-ghost chat-action-btn" onClick={async () => { const call = await initiateCall(currentUser.id, selectedChat, 'audio'); if (call) { setActiveCallId(call.id); setShowAudioCall(true); } }} title="Audio Call">
+                            <button className="btn-ghost chat-action-btn" onClick={async () => {
+                                const call = await initiateCall(currentUser.id, selectedChat, 'audio');
+                                if (call) {
+                                    setActiveCallId(call.id);
+                                    setShowAudioCall(true);
+                                    const inviteMsg = await msgStore.send(currentUser.id, selectedChat, `📞 Audio Call`, 'call-invite');
+                                    if (inviteMsg) setChatMsgs(prev => [...prev, inviteMsg]);
+                                }
+                            }} title="Audio Call">
                                 <Phone size={20} />
                             </button>
-                            <button className="btn-ghost chat-action-btn" onClick={async () => { const call = await initiateCall(currentUser.id, selectedChat, 'video'); if (call) { setActiveCallId(call.id); setShowVideoCall(true); } }} title="Video Call">
+                            <button className="btn-ghost chat-action-btn" onClick={async () => {
+                                const call = await initiateCall(currentUser.id, selectedChat, 'video');
+                                if (call) {
+                                    setActiveCallId(call.id);
+                                    setShowVideoCall(true);
+                                    const inviteMsg = await msgStore.send(currentUser.id, selectedChat, `📹 Video Call`, 'call-invite');
+                                    if (inviteMsg) setChatMsgs(prev => [...prev, inviteMsg]);
+                                }
+                            }} title="Video Call">
                                 <Video size={20} />
                             </button>
                             <button className="btn-ghost chat-action-btn" onClick={() => setShowGameMenu(!showGameMenu)} title="Games">
@@ -228,11 +251,8 @@ export default function Messages() {
                                 <div className="chat-game-menu">
                                     <div className="chat-game-menu-header">🎮 Invite to play</div>
                                     {[
-                                        { id: 'ludo', name: '🎲 Ludo' },
-                                        { id: 'chess', name: '♟️ Chess' },
-                                        { id: 'flappy', name: '🐦 Flappy Bird' },
                                         { id: 'rps', name: '✊ Rock Paper Scissors' },
-                                        { id: 'word', name: '🔤 Guess the Word' },
+                                        { id: 'tictactoe', name: '⭕ Tic Tac Toe' },
                                     ].map(game => (
                                         <button key={game.id} className="chat-game-option" onClick={() => handleGameInvite(game.id)}>{game.name}</button>
                                     ))}
@@ -242,8 +262,22 @@ export default function Messages() {
 
                         <div className="chat-messages">
                             {chatMsgs.map(msg => (
-                                <div key={msg.id} className={`chat-msg ${(msg.from_id || msg.from) === currentUser?.id ? 'sent' : 'received'} ${msg.type === 'one-time' ? 'one-time' : ''} ${msg.type === 'game-invite' ? 'game-invite-msg' : ''}`}>
-                                    {msg.type === 'image' || msg.type === 'one-time' ? (
+                                <div key={msg.id} className={`chat-msg ${(msg.from_id || msg.from) === currentUser?.id ? 'sent' : 'received'} ${msg.type === 'one-time' ? 'one-time' : ''} ${msg.type === 'game-invite' || msg.type === 'call-invite' ? 'game-invite-msg' : ''}`}>
+                                    {msg.type === 'call-invite' ? (
+                                        <div className="chat-call-invite">
+                                            <span className="call-invite-text">{msg.text}</span>
+                                            {(msg.from_id || msg.from) !== currentUser?.id && (
+                                                <button className="join-now-btn" onClick={async () => {
+                                                    const call = await import('../lib/callSignaling').then(m => m.getActiveCall(currentUser.id));
+                                                    if (call) {
+                                                        setActiveCallId(call.id);
+                                                        if (call.call_type === 'video') setShowVideoCall(true);
+                                                        else setShowAudioCall(true);
+                                                    }
+                                                }}>Join Now</button>
+                                            )}
+                                        </div>
+                                    ) : msg.type === 'image' || msg.type === 'one-time' ? (
                                         (msg.image_url || msg.imageUrl) ? (
                                             <div>
                                                 <img src={msg.image_url || msg.imageUrl} alt="" />
@@ -279,6 +313,7 @@ export default function Messages() {
             {showVideoCall && selectedUser && <VideoCall user={selectedUser} callId={activeCallId} onClose={() => { setShowVideoCall(false); setActiveCallId(null); }} />}
             {showAudioCall && selectedUser && <AudioCall user={selectedUser} callId={activeCallId} onClose={() => { setShowAudioCall(false); setActiveCallId(null); }} />}
             {showWatchTogether && selectedUser && <WatchTogether user={selectedUser} onClose={() => setShowWatchTogether(false)} />}
+            {activeGameSessionId && <GameLobby sessionId={activeGameSessionId} onClose={() => setActiveGameSessionId(null)} />}
         </>
     );
 }
