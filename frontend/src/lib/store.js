@@ -39,6 +39,33 @@ function getStoreObj(key) {
     } catch { return null; }
 }
 
+// ===== MIGRATE OLD DATA (rimi_* → genx_*) =====
+function migrateOldData() {
+    const OLD_KEYS = {
+        'rimi_users': 'genx_users',
+        'rimi_current_user': 'genx_current_user',
+        'rimi_posts': 'genx_posts',
+        'rimi_stories': 'genx_stories',
+        'rimi_messages': 'genx_messages',
+        'rimi_notifications': 'genx_notifications',
+        'rimi_follows': 'genx_follows',
+        'rimi_comments': 'genx_comments',
+        'rimi_likes': 'genx_likes',
+        'rimi_saved': 'genx_saved',
+        'rimi_theme': 'genx_theme',
+    };
+    Object.entries(OLD_KEYS).forEach(([oldKey, newKey]) => {
+        const oldData = localStorage.getItem(oldKey);
+        if (oldData && !localStorage.getItem(newKey)) {
+            localStorage.setItem(newKey, oldData);
+        }
+        // Clean up old keys after migration
+        if (oldData) localStorage.removeItem(oldKey);
+    });
+}
+
+migrateOldData();
+
 // ===== SEED DATA =====
 function seedData() {
     if (getStore(STORAGE_KEYS.USERS).length > 0) return;

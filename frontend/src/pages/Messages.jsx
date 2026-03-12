@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Phone, Video, Image, Send, ArrowLeft, Camera, Gamepad2, Eye, Mic, MicOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { messages as msgStore, users as usersStore, follows as followsStore } from '../lib/store';
+import { initiateCall } from '../lib/callSignaling';
 import sounds from '../lib/sounds';
 import VideoCall from '../components/VideoCall';
 import AudioCall from '../components/AudioCall';
@@ -132,10 +133,10 @@ export default function Messages() {
                                 <div style={{ fontWeight: '600' }}>{selectedUser.username}</div>
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Active now</div>
                             </div>
-                            <button className="btn-ghost chat-action-btn" onClick={() => setShowAudioCall(true)} title="Audio Call">
+                            <button className="btn-ghost chat-action-btn" onClick={() => { initiateCall(currentUser.id, selectedChat, 'audio'); setShowAudioCall(true); }} title="Audio Call">
                                 <Phone size={20} />
                             </button>
-                            <button className="btn-ghost chat-action-btn" onClick={() => setShowVideoCall(true)} title="Video Call">
+                            <button className="btn-ghost chat-action-btn" onClick={() => { initiateCall(currentUser.id, selectedChat, 'video'); setShowVideoCall(true); }} title="Video Call">
                                 <Video size={20} />
                             </button>
                             <button className="btn-ghost chat-action-btn" onClick={() => setShowGameMenu(!showGameMenu)} title="Games">

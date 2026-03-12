@@ -1,6 +1,5 @@
 import React, { useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ClerkProvider, AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 
@@ -32,8 +31,7 @@ import CreateModal from './components/CreateModal';
 import SearchPanel from './components/SearchPanel';
 import CursorEffects from './components/CursorEffects';
 import LoadingScreen from './components/LoadingScreen';
-
-const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+import IncomingCall from './components/IncomingCall';
 
 function ProtectedRoute({ children }) {
     const { user, loading } = useAuth();
@@ -52,7 +50,6 @@ function AppShell() {
             <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
-                <Route path="/sso-callback" element={CLERK_KEY ? <AuthenticateWithRedirectCallback /> : <Navigate to="/login" replace />} />
                 <Route path="*" element={<Navigate to="/login" replace />} />
             </Routes>
         );
@@ -93,6 +90,7 @@ function AppShell() {
 
             {showCreate && <CreateModal onClose={() => setShowCreate(false)} />}
             {showSearch && <SearchPanel onClose={() => setShowSearch(false)} />}
+            <IncomingCall />
         </>
     );
 }
@@ -101,8 +99,7 @@ export default function App() {
     const [showLoading, setShowLoading] = useState(true);
     const handleLoadingFinish = useCallback(() => setShowLoading(false), []);
 
-    // Wrap with ClerkProvider if key is available
-    const appContent = (
+    return (
         <BrowserRouter>
             <ThemeProvider>
                 <AuthProvider>
@@ -113,14 +110,4 @@ export default function App() {
             </ThemeProvider>
         </BrowserRouter>
     );
-
-    if (CLERK_KEY) {
-        return (
-            <ClerkProvider publishableKey={CLERK_KEY}>
-                {appContent}
-            </ClerkProvider>
-        );
-    }
-
-    return appContent;
 }
