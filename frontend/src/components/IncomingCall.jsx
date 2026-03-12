@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, PhoneOff, Video } from 'lucide-react';
-import { onCallEvent, getActiveCall, acceptCall, declineCall } from '../lib/callSignaling';
+import { subscribeToCallSignals, declineCall } from '../lib/callSignaling';
 import { users as usersStore } from '../lib/store';
 import { useAuth } from '../context/AuthContext';
 import AudioCall from './AudioCall';
@@ -15,82 +15,82 @@ export default function IncomingCall() {
     useEffect(() => {
         if (!currentUser) return;
 
-        const cleanup = onCallEvent(async (event) => {
-            if (event.action === 'incoming' && event.call && event.call.to === currentUser.id) {
-                const caller = await usersStore.getById(event.call.from);
+        // Subscribe to call signals via Supabase Realtime
+        const sub = subscribeToCallSignals(currentUser.id, async (event) => {
+            if (event.action === 'incoming' && event.call) {
+                const caller = await usersStore.getById(event.call.from_id);
                 setCallerUser(caller);
                 setIncomingCall(event.call);
             } else if (event.action === 'ended' || event.action === 'declined') {
-                setIncomingCall(null);
-                setShowCallUI(false);
+                if (!showCallUI) {
+                    setIncomingCall(null);
+                    setCallerUser(null);
+                }
             }
         });
 
-        // Also poll for incoming calls (cross-tab fallback)
-        const pollInterval = setInterval(() => {
-            const call = getActiveCall();
-            if (call && call.to === currentUser.id && call.status === 'ringing' && !incomingCall) {
-                usersStore.getById(call.from).then(caller => {
-                    setCallerUser(caller);
-                    setIncomingCall(call);
-                });
-            }
-            if (incomingCall && (!call || call.status === 'ended' || call.status === 'declined')) {
-                if (!showCallUI) {
-                    setIncomingCall(null);
-                }
-            }
-        }, 500);
-
-        return () => {
-            cleanup();
-            clearInterval(pollInterval);
-        };
-    }, [currentUser, incomingCall, showCallUI]);
+        return () => sub.unsubscribe();
+    }, [currentUser, showCallUI]);
 
     const handleAccept = () => {
         setShowCallUI(true);
     };
 
     const handleDecline = () => {
-        declineCall();
+        if (incomingCall) declineCall(incomingCall.id);
         setIncomingCall(null);
+        setCallerUser(null);
     };
 
     const handleCallClose = () => {
         setShowCallUI(false);
         setIncomingCall(null);
+        setCallerUser(null);
     };
 
-    // Show the full call UI after accepting
+    // Show full call UI after accepting
     if (showCallUI && incomingCall && callerUser) {
-        if (incomingCall.type === 'video') {
-            return <VideoCall user={callerUser} onClose={handleCallClose} isIncoming={true} />;
+        if (incomingCall.call_type === 'video') {
+            return <VideoCall user={callerUser} callId={incomingCall.id} onClose={handleCallClose} isIncoming={true} />;
         }
-        return <AudioCall user={callerUser} onClose={handleCallClose} isIncoming={true} />;
+        return <AudioCall user={callerUser} callId={incomingCall.id} onClose={handleCallClose} isIncoming={true} />;
     }
 
     // Show incoming call notification banner
     if (!incomingCall || !callerUser) return null;
 
     return (
-        <div className="incoming-call-banner">
-            <div className="incoming-call-info">
-                <img src={callerUser.avatar} alt="" className="avatar avatar-md" />
-                <div>
-                    <div style={{ fontWeight: '700', fontSize: '0.95rem' }}>{callerUser.username}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#c9a96e' }}>
-                        {incomingCall.type === 'video' ? '📹 Incoming video call...' : '📞 Incoming audio call...'}
-                    </div>
+        <div className="incoming-call-overlay">
+            <div className="incoming-call-card">
+                {/* Animated background */}
+                <div className="incoming-call-bg" />
+
+                {/* Pulsating avatar */}
+                <div className="incoming-avatar-wrapper">
+                    <div className="incoming-avatar-pulse" />
+                    <div className="incoming-avatar-pulse delay" />
+                    <img src={callerUser.avatar} alt="" className="incoming-avatar" />
                 </div>
-            </div>
-            <div className="incoming-call-actions">
-                <button className="call-btn accept-call" onClick={handleAccept} title="Accept">
-                    {incomingCall.type === 'video' ? <Video size={18} /> : <Phone size={18} />}
-                </button>
-                <button className="call-btn end-call" onClick={handleDecline} title="Decline">
-                    <PhoneOff size={18} />
-                </button>
+
+                {/* Call info */}
+                <div className="incoming-call-text">
+                    <h3 className="incoming-caller-name">{callerUser.name || callerUser.username}</h3>
+                    <p className="incoming-call-type">
+                        {incomingCall.call_type === 'video' ? '📹 Incoming Video Call' : '📞 Incoming Audio Call'}
+                    </p>
+                </div>
+
+                {/* Action buttons */}
+                <div className="incoming-call-buttons">
+                    <button className="incoming-btn decline" onClick={handleDecline}>
+                        <PhoneOff size={20} />
+                        <span>Decline</span>
+                    </button>
+                    <button className="incoming-btn accept" onClick={handleAccept}>
+                        {incomingCall.call_type === 'video' ? <Video size={20} /> : <Phone size={20} />}
+                        <span>Join Now</span>
+                    </button>
+                </div>
             </div>
         </div>
     );

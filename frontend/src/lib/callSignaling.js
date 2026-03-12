@@ -1,102 +1,144 @@
-// ===== CALL SIGNALING via localStorage + BroadcastChannel =====
-// This enables call signaling between two browser tabs on the same device.
+// ===== CALL SIGNALING via Supabase Realtime =====
+// Cross-device call signaling using Supabase call_signals table
 
-const CALL_KEY = 'genx_active_call';
-const CALL_CHANNEL_NAME = 'genx_call_channel';
+import { supabase } from './store';
 
-let channel = null;
-try {
-    channel = new BroadcastChannel(CALL_CHANNEL_NAME);
-} catch (e) {
-    console.log('BroadcastChannel not supported, falling back to storage events');
-}
+let callSubscription = null;
 
-// Call states: 'ringing' | 'accepted' | 'declined' | 'ended' | 'busy'
-export function getActiveCall() {
-    try {
-        return JSON.parse(localStorage.getItem(CALL_KEY)) || null;
-    } catch { return null; }
-}
+// Initiate a call — inserts into call_signals table
+export async function initiateCall(fromUserId, toUserId, callType = 'audio') {
+    // Clean up any old calls first
+    await supabase.from('call_signals')
+        .delete()
+        .or(`from_id.eq.${fromUserId},to_id.eq.${fromUserId}`)
+        .in('status', ['ringing', 'ended', 'declined']);
 
-export function initiateCall(fromUserId, toUserId, callType = 'audio') {
-    const callData = {
-        id: 'call_' + Date.now(),
-        from: fromUserId,
-        to: toUserId,
-        type: callType,       // 'audio' or 'video'
+    const { data, error } = await supabase.from('call_signals').insert({
+        from_id: fromUserId,
+        to_id: toUserId,
+        call_type: callType,
         status: 'ringing',
-        startedAt: Date.now(),
-    };
-    localStorage.setItem(CALL_KEY, JSON.stringify(callData));
-    broadcastCallEvent({ action: 'incoming', call: callData });
-    return callData;
+    }).select().single();
+
+    if (error) { console.error('Failed to initiate call:', error); return null; }
+    return data;
 }
 
-export function acceptCall() {
-    const call = getActiveCall();
-    if (!call) return null;
-    call.status = 'accepted';
-    call.acceptedAt = Date.now();
-    localStorage.setItem(CALL_KEY, JSON.stringify(call));
-    broadcastCallEvent({ action: 'accepted', call });
-    return call;
+// Accept a call
+export async function acceptCall(callId) {
+    const { data, error } = await supabase.from('call_signals')
+        .update({ status: 'accepted' })
+        .eq('id', callId)
+        .select().single();
+    return data;
 }
 
-export function declineCall() {
-    const call = getActiveCall();
-    if (!call) return;
-    call.status = 'declined';
-    localStorage.setItem(CALL_KEY, JSON.stringify(call));
-    broadcastCallEvent({ action: 'declined', call });
-    // Clean up after a short delay
-    setTimeout(() => {
-        const current = getActiveCall();
-        if (current && current.status === 'declined') {
-            localStorage.removeItem(CALL_KEY);
-        }
-    }, 3000);
+// Decline a call
+export async function declineCall(callId) {
+    await supabase.from('call_signals')
+        .update({ status: 'declined' })
+        .eq('id', callId);
 }
 
-export function endCall() {
-    const call = getActiveCall();
-    if (call) {
-        call.status = 'ended';
-        localStorage.setItem(CALL_KEY, JSON.stringify(call));
-        broadcastCallEvent({ action: 'ended', call });
+// End a call
+export async function endCall(callId) {
+    if (!callId) return;
+    await supabase.from('call_signals')
+        .update({ status: 'ended', ended_at: new Date().toISOString() })
+        .eq('id', callId);
+}
+
+// Send SDP offer to the callee
+export async function sendOffer(callId, offer) {
+    await supabase.from('call_signals')
+        .update({ sdp_offer: JSON.stringify(offer) })
+        .eq('id', callId);
+}
+
+// Send SDP answer back to the caller
+export async function sendAnswer(callId, answer) {
+    await supabase.from('call_signals')
+        .update({ sdp_answer: JSON.stringify(answer) })
+        .eq('id', callId);
+}
+
+// Send ICE candidate
+export async function sendIceCandidate(callId, candidate, fromSide) {
+    // Append candidate to the existing array
+    const { data: current } = await supabase.from('call_signals')
+        .select('ice_candidates').eq('id', callId).single();
+
+    const existing = current?.ice_candidates || [];
+    existing.push({ ...candidate, side: fromSide });
+
+    await supabase.from('call_signals')
+        .update({ ice_candidates: existing })
+        .eq('id', callId);
+}
+
+// Get active call for a user
+export async function getActiveCall(userId) {
+    const { data } = await supabase.from('call_signals')
+        .select('*')
+        .or(`from_id.eq.${userId},to_id.eq.${userId}`)
+        .in('status', ['ringing', 'accepted'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+    return data;
+}
+
+// Get call by ID
+export async function getCallById(callId) {
+    const { data } = await supabase.from('call_signals')
+        .select('*').eq('id', callId).single();
+    return data;
+}
+
+// Subscribe to incoming calls for a user — returns unsubscribe function
+export function subscribeToCallSignals(userId, onCallEvent) {
+    // Clean up existing subscription
+    if (callSubscription) {
+        callSubscription.unsubscribe();
+        callSubscription = null;
     }
-    setTimeout(() => {
-        localStorage.removeItem(CALL_KEY);
-    }, 500);
-}
 
-function broadcastCallEvent(event) {
-    if (channel) {
-        channel.postMessage(event);
-    }
-}
+    callSubscription = supabase
+        .channel(`call_signals_${userId}`)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: 'call_signals',
+        }, (payload) => {
+            const record = payload.new;
+            if (!record) return;
 
-// Listen for call events — returns a cleanup function
-export function onCallEvent(callback) {
-    const handleBroadcast = (e) => callback(e.data);
-    const handleStorage = (e) => {
-        if (e.key === CALL_KEY) {
-            const call = e.newValue ? JSON.parse(e.newValue) : null;
-            if (call) {
-                callback({ action: call.status === 'ringing' ? 'incoming' : call.status, call });
-            } else {
-                callback({ action: 'ended', call: null });
+            // Only care about calls involving this user
+            if (record.to_id === userId || record.from_id === userId) {
+                if (payload.eventType === 'INSERT' && record.to_id === userId && record.status === 'ringing') {
+                    onCallEvent({ action: 'incoming', call: record });
+                } else if (payload.eventType === 'UPDATE') {
+                    onCallEvent({ action: record.status, call: record });
+                }
+            }
+        })
+        .subscribe();
+
+    return {
+        unsubscribe: () => {
+            if (callSubscription) {
+                callSubscription.unsubscribe();
+                callSubscription = null;
             }
         }
     };
+}
 
-    if (channel) {
-        channel.addEventListener('message', handleBroadcast);
-    }
-    // Also listen to storage events for cross-tab support
-    window.addEventListener('storage', handleStorage);
-
-    return () => {
-        if (channel) channel.removeEventListener('message', handleBroadcast);
-        window.removeEventListener('storage', handleStorage);
-    };
+// Poll for call updates (fallback + SDP/ICE exchange)
+export function pollCallUpdates(callId, callback, interval = 1500) {
+    const timer = setInterval(async () => {
+        const call = await getCallById(callId);
+        if (call) callback(call);
+    }, interval);
+    return () => clearInterval(timer);
 }

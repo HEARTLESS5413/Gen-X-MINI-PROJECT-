@@ -17,6 +17,7 @@ export default function Messages() {
     const [selectedUser, setSelectedUser] = useState(null);
     const [showVideoCall, setShowVideoCall] = useState(false);
     const [showAudioCall, setShowAudioCall] = useState(false);
+    const [activeCallId, setActiveCallId] = useState(null);
     const [showWatchTogether, setShowWatchTogether] = useState(false);
     const [showGameMenu, setShowGameMenu] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -207,10 +208,10 @@ export default function Messages() {
                                 <div style={{ fontWeight: '600' }}>{selectedUser.username}</div>
                                 <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>Active now</div>
                             </div>
-                            <button className="btn-ghost chat-action-btn" onClick={() => { initiateCall(currentUser.id, selectedChat, 'audio'); setShowAudioCall(true); }} title="Audio Call">
+                            <button className="btn-ghost chat-action-btn" onClick={async () => { const call = await initiateCall(currentUser.id, selectedChat, 'audio'); if (call) { setActiveCallId(call.id); setShowAudioCall(true); } }} title="Audio Call">
                                 <Phone size={20} />
                             </button>
-                            <button className="btn-ghost chat-action-btn" onClick={() => { initiateCall(currentUser.id, selectedChat, 'video'); setShowVideoCall(true); }} title="Video Call">
+                            <button className="btn-ghost chat-action-btn" onClick={async () => { const call = await initiateCall(currentUser.id, selectedChat, 'video'); if (call) { setActiveCallId(call.id); setShowVideoCall(true); } }} title="Video Call">
                                 <Video size={20} />
                             </button>
                             <button className="btn-ghost chat-action-btn" onClick={() => setShowGameMenu(!showGameMenu)} title="Games">
@@ -275,8 +276,8 @@ export default function Messages() {
                 )}
             </div>
 
-            {showVideoCall && selectedUser && <VideoCall user={selectedUser} onClose={() => setShowVideoCall(false)} />}
-            {showAudioCall && selectedUser && <AudioCall user={selectedUser} onClose={() => setShowAudioCall(false)} />}
+            {showVideoCall && selectedUser && <VideoCall user={selectedUser} callId={activeCallId} onClose={() => { setShowVideoCall(false); setActiveCallId(null); }} />}
+            {showAudioCall && selectedUser && <AudioCall user={selectedUser} callId={activeCallId} onClose={() => { setShowAudioCall(false); setActiveCallId(null); }} />}
             {showWatchTogether && selectedUser && <WatchTogether user={selectedUser} onClose={() => setShowWatchTogether(false)} />}
         </>
     );

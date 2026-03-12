@@ -1,62 +1,120 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Mic, MicOff, Volume2, VolumeX, Phone, PhoneOff } from 'lucide-react';
-import { acceptCall, endCall, onCallEvent, getActiveCall } from '../lib/callSignaling';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Mic, MicOff, Volume2, VolumeX, PhoneOff } from 'lucide-react';
+import { endCall, sendOffer, sendAnswer, sendIceCandidate, pollCallUpdates, acceptCall } from '../lib/callSignaling';
+import { WebRTCConnection } from '../lib/webrtc';
 
-export default function AudioCall({ user, onClose, isIncoming = false }) {
+export default function AudioCall({ user, callId, onClose, isIncoming = false }) {
     const [isMuted, setIsMuted] = useState(false);
     const [isSpeaker, setIsSpeaker] = useState(true);
     const [callDuration, setCallDuration] = useState(0);
-    const [callState, setCallState] = useState(isIncoming ? 'ringing' : 'calling'); // 'calling' | 'ringing' | 'connected' | 'declined' | 'ended'
-    const localStream = useRef(null);
+    const [callState, setCallState] = useState(isIncoming ? 'connecting' : 'calling');
+    const rtcRef = useRef(null);
+    const remoteAudioRef = useRef(null);
     const ringtoneRef = useRef(null);
+    const pollStopRef = useRef(null);
+    const processedCandidatesRef = useRef(0);
+    const callIdRef = useRef(callId);
 
-    useEffect(() => {
-        // Play ringing tone
-        playRingtone();
-
-        // Listen for call events
-        const cleanup = onCallEvent((event) => {
-            if (event.action === 'accepted') {
-                setCallState('connected');
-                stopRingtone();
-                startMic();
-            } else if (event.action === 'declined') {
-                setCallState('declined');
-                stopRingtone();
-                setTimeout(() => handleEnd(), 2000);
-            } else if (event.action === 'ended') {
-                setCallState('ended');
-                stopRingtone();
-                setTimeout(() => handleEnd(), 1000);
-            }
-        });
-
-        // Also poll the active call status
-        const pollInterval = setInterval(() => {
-            const call = getActiveCall();
-            if (!call || call.status === 'ended') {
-                setCallState('ended');
-                stopRingtone();
-                setTimeout(() => handleEnd(), 1000);
-            } else if (call.status === 'accepted' && callState !== 'connected') {
-                setCallState('connected');
-                stopRingtone();
-                startMic();
-            } else if (call.status === 'declined' && callState !== 'declined') {
-                setCallState('declined');
-                stopRingtone();
-                setTimeout(() => handleEnd(), 2000);
-            }
-        }, 500);
-
-        return () => {
-            cleanup();
-            clearInterval(pollInterval);
-            stopMic();
-            stopRingtone();
-        };
+    // Cleanup function
+    const cleanup = useCallback(() => {
+        stopRingtone();
+        if (pollStopRef.current) pollStopRef.current();
+        if (rtcRef.current) rtcRef.current.destroy();
     }, []);
 
+    // End the call
+    const handleEnd = useCallback(() => {
+        endCall(callIdRef.current);
+        cleanup();
+        onClose();
+    }, [cleanup, onClose]);
+
+    useEffect(() => {
+        callIdRef.current = callId;
+        if (!callId) return;
+
+        playRingtone();
+
+        const rtc = new WebRTCConnection({
+            onRemoteStream: (stream) => {
+                if (remoteAudioRef.current) {
+                    remoteAudioRef.current.srcObject = stream;
+                    remoteAudioRef.current.play().catch(() => { });
+                }
+            },
+            onIceCandidate: (candidate) => {
+                sendIceCandidate(callId, candidate, isIncoming ? 'callee' : 'caller');
+            },
+            onConnectionStateChange: (state) => {
+                if (state === 'connected') {
+                    setCallState('connected');
+                    stopRingtone();
+                } else if (state === 'disconnected' || state === 'failed') {
+                    handleEnd();
+                }
+            },
+        });
+        rtcRef.current = rtc;
+
+        async function startCall() {
+            try {
+                await rtc.getLocalStream('audio');
+
+                if (isIncoming) {
+                    // Receiver: accept, wait for offer, then answer
+                    await acceptCall(callId);
+                    setCallState('connecting');
+                    stopRingtone();
+                } else {
+                    // Caller: create & send offer
+                    const offer = await rtc.createOffer();
+                    await sendOffer(callId, offer);
+                }
+            } catch (err) {
+                console.error('Call setup error:', err);
+            }
+        }
+        startCall();
+
+        // Poll for SDP/ICE exchange and status
+        const stopPoll = pollCallUpdates(callId, async (call) => {
+            if (!call) return;
+            if (call.status === 'ended' || call.status === 'declined') {
+                cleanup();
+                onClose();
+                return;
+            }
+
+            // Caller: wait for answer
+            if (!isIncoming && call.sdp_answer && rtc.pc.remoteDescription === null) {
+                try {
+                    await rtc.setRemoteAnswer(JSON.parse(call.sdp_answer));
+                } catch (e) { console.error('Set answer error:', e); }
+            }
+
+            // Receiver: wait for offer, then create answer
+            if (isIncoming && call.sdp_offer && rtc.pc.remoteDescription === null) {
+                try {
+                    const answer = await rtc.createAnswer(JSON.parse(call.sdp_offer));
+                    await sendAnswer(callId, answer);
+                } catch (e) { console.error('Create answer error:', e); }
+            }
+
+            // Process new ICE candidates
+            const candidates = call.ice_candidates || [];
+            const mySide = isIncoming ? 'caller' : 'callee';
+            const newCandidates = candidates.filter(c => c.side === mySide);
+            for (let i = processedCandidatesRef.current; i < newCandidates.length; i++) {
+                await rtc.addIceCandidate(newCandidates[i]);
+            }
+            processedCandidatesRef.current = newCandidates.length;
+        }, 1000);
+        pollStopRef.current = stopPoll;
+
+        return () => { cleanup(); };
+    }, [callId]);
+
+    // Duration timer
     useEffect(() => {
         if (callState !== 'connected') return;
         const timer = setInterval(() => setCallDuration(d => d + 1), 1000);
@@ -65,153 +123,92 @@ export default function AudioCall({ user, onClose, isIncoming = false }) {
 
     const playRingtone = () => {
         try {
-            // Create oscillator-based ringtone
             const ctx = new (window.AudioContext || window.webkitAudioContext)();
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
             osc.frequency.value = isIncoming ? 440 : 380;
-            gain.gain.value = 0.1;
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start();
-
-            // Pulse the ringtone
-            const pulseInterval = setInterval(() => {
-                gain.gain.value = gain.gain.value > 0 ? 0 : 0.1;
-            }, isIncoming ? 500 : 1000);
-
+            gain.gain.value = 0.08;
+            osc.connect(gain); gain.connect(ctx.destination); osc.start();
+            const pulseInterval = setInterval(() => { gain.gain.value = gain.gain.value > 0 ? 0 : 0.08; }, 600);
             ringtoneRef.current = { ctx, osc, gain, pulseInterval };
-        } catch (e) {
-            console.log('Audio context error:', e);
-        }
+        } catch (e) { }
     };
 
     const stopRingtone = () => {
-        if (ringtoneRef.current) {
-            clearInterval(ringtoneRef.current.pulseInterval);
-            try {
-                ringtoneRef.current.osc.stop();
-                ringtoneRef.current.ctx.close();
-            } catch (e) {}
-            ringtoneRef.current = null;
-        }
-    };
-
-    const startMic = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            localStream.current = stream;
-        } catch (err) {
-            console.log('Mic error:', err);
-        }
-    };
-
-    const stopMic = () => {
-        localStream.current?.getTracks().forEach(t => t.stop());
+        if (!ringtoneRef.current) return;
+        clearInterval(ringtoneRef.current.pulseInterval);
+        try { ringtoneRef.current.osc.stop(); ringtoneRef.current.ctx.close(); } catch (e) { }
+        ringtoneRef.current = null;
     };
 
     const toggleMute = () => {
-        if (localStream.current) {
-            localStream.current.getAudioTracks().forEach(t => t.enabled = isMuted);
+        if (rtcRef.current) {
+            const muted = rtcRef.current.toggleMute();
+            setIsMuted(muted);
         }
-        setIsMuted(!isMuted);
     };
 
-    const handleAccept = () => {
-        acceptCall();
-        setCallState('connected');
-        stopRingtone();
-        startMic();
+    const toggleSpeaker = () => {
+        // Toggle between speaker and earpiece (via audio element volume)
+        if (remoteAudioRef.current) {
+            remoteAudioRef.current.volume = isSpeaker ? 0.3 : 1.0;
+        }
+        setIsSpeaker(!isSpeaker);
     };
 
-    const handleEnd = () => {
-        endCall();
-        stopMic();
-        stopRingtone();
-        onClose();
-    };
-
-    const formatDuration = (s) => {
-        const mins = Math.floor(s / 60);
-        const secs = s % 60;
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const waves = Array.from({ length: 5 }, (_, i) => i);
+    const formatDuration = (s) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+    const waves = Array.from({ length: 7 }, (_, i) => i);
 
     return (
         <div className="call-overlay">
+            <audio ref={remoteAudioRef} autoPlay playsInline />
             <div className="call-container audio-call">
-                <div className="audio-call-bg" />
+                {/* Animated gradient background */}
+                <div className="call-bg-gradient" />
 
-                <div className="audio-call-content">
-                    <div className={`audio-avatar-ring ${callState === 'connected' ? 'connected' : ''}`}>
-                        <img src={user?.avatar} alt="" className={`call-avatar-large ${callState !== 'connected' ? 'pulse' : ''}`} />
+                <div className="call-content">
+                    {/* Avatar with status ring */}
+                    <div className={`call-avatar-wrapper ${callState}`}>
+                        <div className="call-avatar-ring" />
+                        <div className="call-avatar-ring delay" />
+                        <img src={user?.avatar} alt="" className="call-avatar-img" />
                     </div>
 
-                    <h2 className="audio-call-name">{user?.username}</h2>
+                    <h2 className="call-user-name">{user?.name || user?.username}</h2>
+                    <p className="call-username">@{user?.username}</p>
 
-                    {callState === 'calling' && (
-                        <p className="audio-call-status">Calling...</p>
-                    )}
-                    {callState === 'ringing' && (
-                        <p className="audio-call-status" style={{ color: '#c9a96e' }}>Incoming call...</p>
-                    )}
-                    {callState === 'connected' && (
-                        <p className="audio-call-status">{formatDuration(callDuration)}</p>
-                    )}
-                    {callState === 'declined' && (
-                        <p className="audio-call-status" style={{ color: '#c4636c' }}>Call declined</p>
-                    )}
-                    {callState === 'ended' && (
-                        <p className="audio-call-status" style={{ color: '#7a7a7a' }}>Call ended</p>
-                    )}
+                    {/* Status text */}
+                    <div className="call-status">
+                        {callState === 'calling' && <span className="status-text calling">Calling<span className="dot-animation">...</span></span>}
+                        {callState === 'connecting' && <span className="status-text connecting">Connecting<span className="dot-animation">...</span></span>}
+                        {callState === 'connected' && <span className="status-text connected">{formatDuration(callDuration)}</span>}
+                    </div>
 
-                    {/* Audio waves */}
+                    {/* Audio visualization waves */}
                     {callState === 'connected' && !isMuted && (
-                        <div className="audio-waves">
-                            {waves.map(i => (
-                                <div key={i} className="audio-wave" style={{ animationDelay: `${i * 0.15}s` }} />
-                            ))}
+                        <div className="call-audio-waves">
+                            {waves.map(i => <div key={i} className="call-wave" style={{ animationDelay: `${i * 0.12}s` }} />)}
                         </div>
                     )}
                 </div>
 
-                <div className="call-controls">
-                    {/* Incoming call: Accept + Decline */}
-                    {callState === 'ringing' && (
-                        <>
-                            <button className="call-btn accept-call" onClick={handleAccept} title="Accept">
-                                <Phone size={22} />
-                            </button>
-                            <button className="call-btn end-call" onClick={handleEnd} title="Decline">
-                                <PhoneOff size={22} />
-                            </button>
-                        </>
-                    )}
+                {/* Controls */}
+                <div className="call-controls-bar">
+                    <button className={`call-control-btn ${isMuted ? 'active' : ''}`} onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'}>
+                        {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
+                        <span className="call-control-label">{isMuted ? 'Unmute' : 'Mute'}</span>
+                    </button>
 
-                    {/* Connected: Mute + Speaker + End */}
-                    {callState === 'connected' && (
-                        <>
-                            <button className={`call-btn ${isMuted ? 'active' : ''}`} onClick={toggleMute}>
-                                {isMuted ? <MicOff size={22} /> : <Mic size={22} />}
-                            </button>
-                            <button className={`call-btn ${!isSpeaker ? 'active' : ''}`} onClick={() => setIsSpeaker(!isSpeaker)}>
-                                {isSpeaker ? <Volume2 size={22} /> : <VolumeX size={22} />}
-                            </button>
-                            <button className="call-btn end-call" onClick={handleEnd}>
-                                <PhoneOff size={22} />
-                            </button>
-                        </>
-                    )}
+                    <button className={`call-control-btn ${!isSpeaker ? 'active' : ''}`} onClick={toggleSpeaker} title={isSpeaker ? 'Earpiece' : 'Speaker'}>
+                        {isSpeaker ? <Volume2 size={22} /> : <VolumeX size={22} />}
+                        <span className="call-control-label">{isSpeaker ? 'Speaker' : 'Earpiece'}</span>
+                    </button>
 
-                    {/* Calling (outgoing, waiting): only End */}
-                    {callState === 'calling' && (
-                        <button className="call-btn end-call" onClick={handleEnd}>
-                            <PhoneOff size={22} />
-                        </button>
-                    )}
+                    <button className="call-control-btn end-call" onClick={handleEnd} title="End Call">
+                        <PhoneOff size={24} />
+                        <span className="call-control-label">End</span>
+                    </button>
                 </div>
             </div>
         </div>
