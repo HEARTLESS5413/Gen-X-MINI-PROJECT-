@@ -1,14 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { Phone, Video, Image, Send, ArrowLeft, Camera, Gamepad2, Eye, Mic, MicOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { messages as msgStore, users as usersStore, follows as followsStore, subscribeToMessages } from '../lib/store';
 import { initiateCall } from '../lib/callSignaling';
 import { createGameSession } from '../lib/gameEngine';
 import sounds from '../lib/sounds';
-import VideoCall from '../components/VideoCall';
-import AudioCall from '../components/AudioCall';
-import WatchTogether from '../components/WatchTogether';
-import GameLobby from '../components/GameLobby';
+
+// Lazy-load heavy overlay components
+const VideoCall = lazy(() => import('../components/VideoCall'));
+const AudioCall = lazy(() => import('../components/AudioCall'));
+const WatchTogether = lazy(() => import('../components/WatchTogether'));
+const GameLobby = lazy(() => import('../components/GameLobby'));
 
 export default function Messages() {
     const { user: currentUser } = useAuth();
@@ -333,10 +335,12 @@ export default function Messages() {
                 )}
             </div>
 
-            {showVideoCall && selectedUser && <VideoCall user={selectedUser} callId={activeCallId} onClose={() => { setShowVideoCall(false); setActiveCallId(null); }} />}
-            {showAudioCall && selectedUser && <AudioCall user={selectedUser} callId={activeCallId} onClose={() => { setShowAudioCall(false); setActiveCallId(null); }} />}
-            {showWatchTogether && selectedUser && <WatchTogether user={selectedUser} onClose={() => setShowWatchTogether(false)} />}
-            {activeGameSessionId && <GameLobby sessionId={activeGameSessionId} onClose={() => setActiveGameSessionId(null)} />}
+            <Suspense fallback={null}>
+                {showVideoCall && selectedUser && <VideoCall user={selectedUser} callId={activeCallId} onClose={() => { setShowVideoCall(false); setActiveCallId(null); }} />}
+                {showAudioCall && selectedUser && <AudioCall user={selectedUser} callId={activeCallId} onClose={() => { setShowAudioCall(false); setActiveCallId(null); }} />}
+                {showWatchTogether && selectedUser && <WatchTogether user={selectedUser} onClose={() => setShowWatchTogether(false)} />}
+                {activeGameSessionId && <GameLobby sessionId={activeGameSessionId} onClose={() => setActiveGameSessionId(null)} />}
+            </Suspense>
         </>
     );
 }

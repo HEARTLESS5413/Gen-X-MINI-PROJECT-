@@ -1,37 +1,48 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 
-// Pages
+// Only load auth pages and shell components eagerly (needed immediately)
 import Login from './pages/Login';
 import Signup from './pages/Signup';
-import Home from './pages/Home';
-import Explore from './pages/Explore';
-import Reels from './pages/Reels';
-import Games from './pages/Games';
-import Messages from './pages/Messages';
-import Notifications from './pages/Notifications';
-import Profile from './pages/Profile';
-import EditProfile from './pages/EditProfile';
-import Settings from './pages/Settings';
-import Saved from './pages/Saved';
-
-// Game pages
-import LudoGame from './pages/games/LudoGame';
-import ChessGame from './pages/games/ChessGame';
-import FlappyBird from './pages/games/FlappyBird';
-import RockPaperScissors from './pages/games/RockPaperScissors';
-import GuessTheWord from './pages/games/GuessTheWord';
-
-// Components
 import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
-import CreateModal from './components/CreateModal';
-import SearchPanel from './components/SearchPanel';
-import CursorEffects from './components/CursorEffects';
 import LoadingScreen from './components/LoadingScreen';
-import IncomingCall from './components/IncomingCall';
+
+// Lazy-load everything else (only downloaded when user navigates there)
+const Home = lazy(() => import('./pages/Home'));
+const Explore = lazy(() => import('./pages/Explore'));
+const Reels = lazy(() => import('./pages/Reels'));
+const Games = lazy(() => import('./pages/Games'));
+const Messages = lazy(() => import('./pages/Messages'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const Profile = lazy(() => import('./pages/Profile'));
+const EditProfile = lazy(() => import('./pages/EditProfile'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Saved = lazy(() => import('./pages/Saved'));
+
+// Game pages — very heavy, lazy-load
+const LudoGame = lazy(() => import('./pages/games/LudoGame'));
+const ChessGame = lazy(() => import('./pages/games/ChessGame'));
+const FlappyBird = lazy(() => import('./pages/games/FlappyBird'));
+const RockPaperScissors = lazy(() => import('./pages/games/RockPaperScissors'));
+const GuessTheWord = lazy(() => import('./pages/games/GuessTheWord'));
+
+// Heavy overlays — lazy-load
+const CreateModal = lazy(() => import('./components/CreateModal'));
+const SearchPanel = lazy(() => import('./components/SearchPanel'));
+const CursorEffects = lazy(() => import('./components/CursorEffects'));
+const IncomingCall = lazy(() => import('./components/IncomingCall'));
+
+// Lightweight page loading spinner
+function PageLoader() {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+            <div style={{ width: '32px', height: '32px', border: '3px solid rgba(99, 102, 241, 0.2)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        </div>
+    );
+}
 
 function ProtectedRoute({ children }) {
     const { user, loading } = useAuth();
@@ -63,24 +74,26 @@ function AppShell() {
                     onSearchClick={() => setShowSearch(!showSearch)}
                 />
                 <main className="main-content">
-                    <Routes>
-                        <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-                        <Route path="/explore" element={<ProtectedRoute><Explore /></ProtectedRoute>} />
-                        <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
-                        <Route path="/games" element={<ProtectedRoute><Games /></ProtectedRoute>} />
-                        <Route path="/games/ludo" element={<ProtectedRoute><LudoGame /></ProtectedRoute>} />
-                        <Route path="/games/chess" element={<ProtectedRoute><ChessGame /></ProtectedRoute>} />
-                        <Route path="/games/flappy" element={<ProtectedRoute><FlappyBird /></ProtectedRoute>} />
-                        <Route path="/games/rps" element={<ProtectedRoute><RockPaperScissors /></ProtectedRoute>} />
-                        <Route path="/games/word" element={<ProtectedRoute><GuessTheWord /></ProtectedRoute>} />
-                        <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
-                        <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
-                        <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-                        <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
-                        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-                        <Route path="/saved" element={<ProtectedRoute><Saved /></ProtectedRoute>} />
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
+                    <Suspense fallback={<PageLoader />}>
+                        <Routes>
+                            <Route path="/" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+                            <Route path="/explore" element={<ProtectedRoute><Explore /></ProtectedRoute>} />
+                            <Route path="/reels" element={<ProtectedRoute><Reels /></ProtectedRoute>} />
+                            <Route path="/games" element={<ProtectedRoute><Games /></ProtectedRoute>} />
+                            <Route path="/games/ludo" element={<ProtectedRoute><LudoGame /></ProtectedRoute>} />
+                            <Route path="/games/chess" element={<ProtectedRoute><ChessGame /></ProtectedRoute>} />
+                            <Route path="/games/flappy" element={<ProtectedRoute><FlappyBird /></ProtectedRoute>} />
+                            <Route path="/games/rps" element={<ProtectedRoute><RockPaperScissors /></ProtectedRoute>} />
+                            <Route path="/games/word" element={<ProtectedRoute><GuessTheWord /></ProtectedRoute>} />
+                            <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+                            <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
+                            <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+                            <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
+                            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                            <Route path="/saved" element={<ProtectedRoute><Saved /></ProtectedRoute>} />
+                            <Route path="*" element={<Navigate to="/" replace />} />
+                        </Routes>
+                    </Suspense>
                 </main>
                 <MobileNav
                     onCreateClick={() => setShowCreate(true)}
@@ -88,9 +101,12 @@ function AppShell() {
                 />
             </div>
 
-            {showCreate && <CreateModal onClose={() => setShowCreate(false)} />}
-            {showSearch && <SearchPanel onClose={() => setShowSearch(false)} />}
-            <IncomingCall />
+            <Suspense fallback={null}>
+                {showCreate && <CreateModal onClose={() => setShowCreate(false)} />}
+                {showSearch && <SearchPanel onClose={() => setShowSearch(false)} />}
+                <CursorEffects />
+                <IncomingCall />
+            </Suspense>
         </>
     );
 }
@@ -104,7 +120,6 @@ export default function App() {
             <ThemeProvider>
                 <AuthProvider>
                     {showLoading && <LoadingScreen onFinish={handleLoadingFinish} />}
-                    <CursorEffects />
                     <AppShell />
                 </AuthProvider>
             </ThemeProvider>
