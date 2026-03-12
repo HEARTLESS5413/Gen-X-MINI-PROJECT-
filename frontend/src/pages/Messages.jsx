@@ -153,7 +153,8 @@ export default function Messages() {
             // Create a real game session in Supabase
             const session = await createGameSession(currentUser.id, gameId, selectedChat);
             if (session) {
-                const msg = await msgStore.send(currentUser.id, selectedChat, `🎮 Let's play ${gameNames[gameId]}! Join now!`, 'game-invite');
+                // Embed session ID in message so receiver can join
+                const msg = await msgStore.send(currentUser.id, selectedChat, `🎮 Let's play ${gameNames[gameId]}! [${session.id}]`, 'game-invite');
                 if (msg) setChatMsgs(prev => [...prev, msg]);
                 setActiveGameSessionId(session.id);
             }
@@ -285,7 +286,29 @@ export default function Messages() {
                                             </div>
                                         ) : <span>{msg.text}</span>
                                     ) : msg.type === 'game-invite' ? (
-                                        <div className="game-invite-content"><Gamepad2 size={18} /><span>{msg.text}</span></div>
+                                        <div className="chat-call-invite">
+                                            <span className="call-invite-text">{msg.text.replace(/\[.*\]$/, '').trim()}</span>
+                                            {(msg.from_id || msg.from) !== currentUser?.id && (() => {
+                                                const match = msg.text.match(/\[([^\]]+)\]$/);
+                                                const sessionId = match ? match[1] : null;
+                                                return sessionId ? (
+                                                    <button className="join-now-btn" onClick={async () => {
+                                                        const { joinGameSession } = await import('../lib/gameEngine');
+                                                        await joinGameSession(sessionId, currentUser.id);
+                                                        setActiveGameSessionId(sessionId);
+                                                    }}>🎮 Join Now</button>
+                                                ) : null;
+                                            })()}
+                                            {(msg.from_id || msg.from) === currentUser?.id && (() => {
+                                                const match = msg.text.match(/\[([^\]]+)\]$/);
+                                                const sessionId = match ? match[1] : null;
+                                                return sessionId ? (
+                                                    <button className="join-now-btn" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }} onClick={() => {
+                                                        setActiveGameSessionId(sessionId);
+                                                    }}>Open Lobby</button>
+                                                ) : null;
+                                            })()}
+                                        </div>
                                     ) : msg.text}
                                 </div>
                             ))}
