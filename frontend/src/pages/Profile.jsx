@@ -73,10 +73,11 @@ export default function Profile() {
 
     return (
         <div className="profile-page">
+            <div className="profile-cover" style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-2), var(--accent-3))', height: '140px', borderRadius: '20px', marginBottom: '-50px', opacity: 0.6 }} />
             <div className="profile-header">
                 <div className="profile-avatar-section">
                     <div className="story-ring" style={{ width: '156px', height: '156px' }}>
-                        <img className="avatar avatar-xxl" src={profileUser.avatar} alt={profileUser.username} />
+                        <img className="avatar avatar-xxl story-avatar-shape" src={profileUser.avatar} alt={profileUser.username} />
                     </div>
                 </div>
                 <div className="profile-info">

@@ -82,7 +82,7 @@ export default function PostCard({ post, onCommentClick }) {
             <div className="post-header">
                 <div className="post-user" style={{ cursor: 'pointer' }} onClick={() => navigate(`/profile/${postUser.username}`)}>
                     <div className="story-ring" style={{ width: '36px', height: '36px' }}>
-                        <img className="avatar" style={{ width: '30px', height: '30px' }} src={postUser.avatar} alt={postUser.username} />
+                        <img className="avatar story-avatar-shape" style={{ width: '30px', height: '30px' }} src={postUser.avatar} alt={postUser.username} />
                     </div>
                     <span className="post-username">{postUser.username}</span>
                     <span className="post-time">• {formatTime(post.created_at || post.createdAt)}</span>

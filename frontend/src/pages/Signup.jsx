@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Camera, Check, Upload, User, Phone as PhoneIcon, AtSign } from 'lucide-react';
+import { ArrowRight, Camera, Check, Upload, User, Phone as PhoneIcon, AtSign, Scan } from 'lucide-react';
 import { supabase } from '../lib/store';
+import { SelfieCapture } from '../components/FaceVerification';
 
 export default function Signup() {
     const { signup } = useAuth();
@@ -18,6 +19,7 @@ export default function Signup() {
     });
     const [profilePhoto, setProfilePhoto] = useState(null);
     const [profilePhotoPreview, setProfilePhotoPreview] = useState(null);
+    const [faceDescriptor, setFaceDescriptor] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const fileInputRef = useRef(null);
@@ -47,15 +49,38 @@ export default function Signup() {
         setError('');
         if (!form.name) { setError('Please enter your name'); return; }
         if (!form.phone || form.phone.length < 10) { setError('Please enter a valid phone number'); return; }
+        // Go to face verification step
+        setStep(3);
+    };
 
+    const handleFaceCapture = (captureData) => {
+        setFaceDescriptor(captureData.descriptor);
+        // If we got a selfie image and no profile photo was uploaded, use the selfie as avatar
+        if (!profilePhotoPreview && captureData.image) {
+            setProfilePhotoPreview(captureData.image);
+        }
+        finishSignup(captureData.descriptor);
+    };
+
+    const handleSkipFace = () => {
+        finishSignup(null);
+    };
+
+    const finishSignup = async (descriptor) => {
         setLoading(true);
+        setError('');
         const result = await signup(form.username, form.email || `${form.username}@genx.app`, form.password, form.name);
-        if (result.error) { setError(result.error); setLoading(false); return; }
+        if (result.error) { setError(result.error); setLoading(false); setStep(2); return; }
 
         // Update profile with phone and avatar
         const updates = { phone: form.phone };
         if (profilePhotoPreview) updates.avatar = profilePhotoPreview;
         await supabase.from('users').update(updates).eq('id', result.user.id);
+
+        // Store face descriptor locally for future verification
+        if (descriptor) {
+            localStorage.setItem('genx_face_descriptor', JSON.stringify(descriptor));
+        }
 
         // Update local cache
         const updatedUser = { ...result.user, ...updates };
@@ -77,9 +102,13 @@ export default function Signup() {
                             <div className="signup-step-circle">{step > 1 ? <Check size={14} /> : '1'}</div>
                             <span>Account</span>
                         </div>
-                        <div className={`signup-step ${step >= 2 ? 'active' : ''}`}>
-                            <div className="signup-step-circle">2</div>
+                        <div className={`signup-step ${step >= 2 ? 'active' : ''} ${step > 2 ? 'completed' : ''}`}>
+                            <div className="signup-step-circle">{step > 2 ? <Check size={14} /> : '2'}</div>
                             <span>Profile</span>
+                        </div>
+                        <div className={`signup-step ${step >= 3 ? 'active' : ''}`}>
+                            <div className="signup-step-circle">3</div>
+                            <span>Verify</span>
                         </div>
                     </div>
 
@@ -124,11 +153,33 @@ export default function Signup() {
 
                             <div className="profile-setup-username"><AtSign size={14} /><span>@{form.username}</span></div>
                             {error && <div className="auth-error">{error}</div>}
-                            <button className="btn btn-primary" type="submit" disabled={loading}>
-                                {loading ? 'Creating...' : <>Complete Signup <Check size={16} /></>}
+                            <button className="btn btn-primary" type="submit">
+                                Next: Face Verify <Scan size={16} />
                             </button>
                             <button type="button" className="btn btn-secondary" onClick={() => { setStep(1); setError(''); }}>Back</button>
                         </form>
+                    )}
+
+                    {step === 3 && (
+                        <div className="auth-form">
+                            <p className="auth-subtitle">Face Verification</p>
+                            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '12px', lineHeight: 1.5 }}>
+                                Take a selfie to verify your identity. This helps keep Gen-X safe and authentic. You can skip this step if you prefer.
+                            </p>
+                            {loading ? (
+                                <div style={{ textAlign: 'center', padding: '40px' }}>
+                                    <div style={{ width: '32px', height: '32px', margin: '0 auto 12px', border: '3px solid var(--border)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Creating your account...</p>
+                                </div>
+                            ) : (
+                                <SelfieCapture
+                                    onCapture={handleFaceCapture}
+                                    onSkip={handleSkipFace}
+                                />
+                            )}
+                            {error && <div className="auth-error" style={{ marginTop: '12px' }}>{error}</div>}
+                            <button type="button" className="btn btn-secondary" onClick={() => { setStep(2); setError(''); }} style={{ marginTop: '8px' }}>Back</button>
+                        </div>
                     )}
 
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '16px', lineHeight: 1.5 }}>

@@ -92,8 +92,10 @@ export const users = {
 
 // ===== POSTS =====
 export const posts = {
-    async getAll() {
-        const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+    async getAll(page = 0, limit = 10) {
+        const from = page * limit;
+        const to = from + limit - 1;
+        const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false }).range(from, to);
         return data || [];
     },
     async getByUser(userId) {
@@ -263,13 +265,17 @@ export const follows = {
     async getFollowing(userId) {
         const { data } = await supabase.from('follows').select('*').eq('user_id', userId);
         return data || [];
+    },
+    async getFollowingIds(userId) {
+        const { data } = await supabase.from('follows').select('target_id').eq('user_id', userId);
+        return (data || []).map(f => f.target_id);
     }
 };
 
 // ===== STORIES =====
 export const stories = {
     async getAll() {
-        const { data } = await supabase.from('stories').select('*').order('created_at', { ascending: false });
+        const { data } = await supabase.from('stories').select('*').order('created_at', { ascending: false }).limit(20);
         return data || [];
     },
     async add(userId) {

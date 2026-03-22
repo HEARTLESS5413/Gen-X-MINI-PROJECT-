@@ -109,13 +109,12 @@ export default function Explore() {
         if (!intent || !currentUser) return;
         async function loadUsers() {
             setLoading(true);
-            const allUsers = await usersStore.getAll();
-            const filtered = [];
-            for (const u of allUsers) {
-                if (u.id === currentUser.id) continue;
-                const isFollowing = await followsStore.isFollowing(currentUser.id, u.id);
-                if (!isFollowing) filtered.push(u);
-            }
+            const [allUsers, followingIds] = await Promise.all([
+                usersStore.getAll(),
+                followsStore.getFollowingIds(currentUser.id),
+            ]);
+            const followingSet = new Set(followingIds);
+            const filtered = allUsers.filter(u => u.id !== currentUser.id && !followingSet.has(u.id));
             setAvailableUsers(filtered);
             setLoading(false);
         }
